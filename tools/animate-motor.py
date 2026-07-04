@@ -49,7 +49,7 @@ smooth(lid)
 # The open lid stands up on the -X side, so lateral separation leans +X.
 EXPLODE = {
     'copper_coil_ring_visual': (37, 85, (0.12, 0.0, 0.85), None),
-    'washer_spacer_disk_visual': (43, 91, (0.55, 0.25, 1.85), None),
+    'washer_spacer_disk_visual': (43, 91, (0.0, 0.0, 1.85), None),
     'rotor_assembly_visual': (49, 100, (0.0, 0.0, 2.85), math.radians(80.0)),
 }
 

@@ -13,8 +13,8 @@ const GLB = 'public/blender/evals/japanese-shrine-night-v2.glb';
 // aimed at the main shrine building (0, 29, -16)
 const POS = [-45, 95, -58];
 const TARGET = [0, 29, -16];
-const COLOR = [0.3, 0.48, 1.0]; // deeply saturated blue moonlight
-const INTENSITY = 90000; // raw candela; viewers normalize local lights on load
+const COLOR = [80/255., 103/255., 134/255.]; // deeply saturated blue moonlight
+const INTENSITY = 900000; // raw candela; viewers normalize local lights on load
 const OUTER = (34 * Math.PI) / 180;
 const INNER = (16 * Math.PI) / 180;
 
