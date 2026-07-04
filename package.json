@@ -1,0 +1,26 @@
+{
+  "name": "generated-worlds-portfolio",
+  "version": "1.0.0",
+  "description": "Portfolio site showcasing AI-generated 3D content, rendered on the web with three.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "blender:build": "node tools/build-blender.mjs",
+    "blender:thumbs": "node tools/capture-thumbs.mjs"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.4.1",
+    "@gltf-transform/core": "^4.4.1",
+    "@gltf-transform/extensions": "^4.4.1",
+    "@gltf-transform/functions": "^4.4.1",
+    "draco3dgltf": "^1.5.7",
+    "playwright-core": "^1.61.1",
+    "sharp": "^0.35.3",
+    "vite": "^8.1.2"
+  }
+}

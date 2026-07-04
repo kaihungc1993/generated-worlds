@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Card previews — pick a direction</title>
+  <style>
+    :root {
+      --bg: #0a0b0f; --card: #14161f; --border: #232633; --text: #e8eaf2;
+      --dim: #9aa0b5; --accent: #7c9eff;
+      --mono: 'IBM Plex Mono', ui-monospace, monospace;
+      --sans: 'Space Grotesk', system-ui, sans-serif;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; display: grid; place-items: center; padding: 48px 24px; }
+    .wrap { max-width: 980px; width: 100%; }
+    .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em; color: var(--accent); text-transform: uppercase; margin-bottom: 14px; }
+    h1 { font-size: clamp(28px, 4.5vw, 44px); letter-spacing: -0.02em; margin-bottom: 10px; }
+    p.lede { color: var(--dim); font-size: 15.5px; line-height: 1.6; max-width: 660px; margin-bottom: 36px; }
+    .options { display: grid; gap: 16px; }
+    a.option { display: grid; grid-template-columns: 64px 1fr auto; gap: 20px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 22px 26px; text-decoration: none; color: inherit; transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s; }
+    a.option:hover { transform: translateY(-3px); border-color: #3a3f52; box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(124,158,255,0.3); }
+    .letter { font-family: var(--mono); font-size: 30px; font-weight: 700; color: var(--accent); border: 1px solid var(--border); border-radius: 12px; width: 64px; height: 64px; display: grid; place-items: center; }
+    .option h2 { font-size: 19px; margin-bottom: 4px; }
+    .option .desc { color: var(--dim); font-size: 13.5px; line-height: 1.55; }
+    .go { font-family: var(--mono); font-size: 13px; color: var(--accent); white-space: nowrap; }
+    .note { margin-top: 30px; font-family: var(--mono); font-size: 12px; color: #5c6275; line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="kicker">Prototype gallery · card game concept</div>
+    <h1>The portfolio as a card game</h1>
+    <p class="lede">Every asset, sim scene and generated world becomes a collectible card — asset cards <em>summon</em> their 3D model out of the card, scene cards pull you <em>into</em> the world with a camera dive. Two previews answer one question: should everything live in one deck, or in a deck per category?</p>
+    <div class="options">
+      <a class="option" href="/previews/one-deck.html">
+        <div class="letter">1</div>
+        <div>
+          <h2>One Deck</h2>
+          <div class="desc">A single merged deck riffle-shuffles and fans into a browsable hand. Category chips re-deal the fan with animation — filtering, not navigating. Best if quick cross-category browsing matters most.</div>
+        </div>
+        <div class="go">open →</div>
+      </a>
+      <a class="option" href="/previews/four-decks.html">
+        <div class="letter">4</div>
+        <div>
+          <h2>Four Decks</h2>
+          <div class="desc">A dealer's card table with four face-down decks, one per category (the game deck is a "coming attraction" teaser). Pick a deck and it deals into a fan; gather sweeps it back. Best if categories should feel like distinct rooms.</div>
+        </div>
+        <div class="go">open →</div>
+      </a>
+      <a class="option" href="/previews/tarot.html">
+        <div class="letter">☾</div>
+        <div>
+          <h2>Tarot Draw</h2>
+          <div class="desc">A mystical bonus take: the deck swirls, deals three cards of fate face-down, and each flips with an arcane glow — a serendipity mode that surfaces random highlights rather than letting you browse.</div>
+        </div>
+        <div class="go">open →</div>
+      </a>
+      <div style="margin: 26px 0 10px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; color: #5c6275; text-transform: uppercase;">Round 2 — browse ~30 cards + side deck in focus views</div>
+      <a class="option" href="/previews/lanes.html">
+        <div class="letter">≡</div>
+        <div>
+          <h2>Category Lanes</h2>
+          <div class="desc">Streaming-service browse: four colored lanes, one per category, drag-with-momentum rows with tilt + holo shine and lane parallax. Scales to any card count; the four types are unmissable.</div>
+        </div>
+        <div class="go">open →</div>
+      </a>
+      <a class="option" href="/previews/orbit.html">
+        <div class="letter">◎</div>
+        <div>
+          <h2>Orbit Wheel</h2>
+          <div class="desc">All ~30 cards on one segmented 3D ring — drag to spin with momentum, a colored dial + legend jumps between category arcs, and the front card enlarges with its story. Browsing is spin → read → click.</div>
+        </div>
+        <div class="go">open →</div>
+      </a>
+      <a class="option" href="/previews/grid.html">
+        <div class="letter">▦</div>
+        <div>
+          <h2>Command Grid</h2>
+          <div class="desc">AAA character-select: compact tile grid on the left (all cards visible, grouped by category), live stage on the right — assets rotate in real 3D as you hover, scenes drift with Ken Burns. Enter summons or dives.</div>
+        </div>
+        <div class="go">open →</div>
+      </a>
+    </div>
+    <div class="note">Dev-server only (not part of the production build) · cards use real thumbnails from the site's manifests · asset cards summon their GLB in 3D (Yu-Gi-Oh style) · scene &amp; world cards dive into the live scene with a camera roll · both pages link back here from the top-left.</div>
+  </div>
+</body>
+</html>

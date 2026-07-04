@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>One Deck — card previews</title>
+  <link rel="stylesheet" href="/previews/preview.css" />
+  <link rel="stylesheet" href="/previews/cards.css" />
+  <style>
+    /* ---------- three-row deal: larger, simpler cards ---------- */
+    /* keep only badge + art + title; art gets most of the card */
+    .card .desc, .card .stats { display: none; }
+    .card .art { height: 74%; margin: 8px 8px 0; }
+    .card .name {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      text-align: center; font-size: 15px; padding: 6px 10px 8px;
+    }
+    .card .badge { font-size: 9px; padding: 3px 9px; }
+
+    /* row labels above each dealt row */
+    #rowLabels { position: fixed; inset: 0; z-index: 9; pointer-events: none; opacity: 0; transition: opacity 0.45s; }
+    #rowLabels.on { opacity: 1; }
+    #rowLabels .rowlab {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 10px; align-items: baseline; white-space: nowrap;
+      font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    }
+    #rowLabels .rowlab span { color: var(--accent); text-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent); }
+    #rowLabels .rowlab span i { font-style: normal; opacity: 0.65; margin-left: 4px; }
+    #rowLabels .rowlab em { font-style: normal; color: #3c4258; }
+
+    /* ---------- focus view: left thumbnail rail, auto-hiding ---------- */
+    #rail.left { left: 0; right: auto; flex-direction: row-reverse; gap: 0; }
+    #rail.left.off { transform: translateY(-50%) translateX(-260px); }
+    #rail.left .rail-toggle {
+      border-radius: 0 12px 12px 0; border-left: none;
+      height: 128px; width: 30px; font-size: 15px;
+    }
+    #rail.left .rail-panel {
+      border-radius: 0 18px 18px 0; border-left: none;
+      width: 216px; max-height: 80vh;
+    }
+    #rail.left.collapsed .rail-panel { width: 0; opacity: 0; border-color: transparent; }
+    #rail.thumbs .rail-scroll { padding: 12px 11px; }
+    #rail.thumbs .rail-item { padding: 4px; margin: 4px 0; }
+    #rail.thumbs .rail-item img { width: 100%; height: 120px; border-radius: 9px; }
+    #rail.thumbs .rail-item span { display: none; }
+    #rail.thumbs .rail-item:hover { transform: translateX(2px); }
+
+    /* ---------- focus info panel moves to the right ---------- */
+    #fx-caption { left: auto; right: 26px; bottom: 92px; }
+
+    /* rules/legend row shown once after the shuffle */
+    #introLegend { position: fixed; inset: 0; z-index: 9; pointer-events: none; }
+    #introLegend .leg {
+      position: absolute; width: 232px; transform: translateX(-50%);
+      text-align: center; opacity: 0; transition: opacity 0.45s, translate 0.45s;
+      translate: 0 10px;
+    }
+    #introLegend .leg.on { opacity: 1; translate: 0 0; }
+    #introLegend .lt {
+      font-family: var(--mono); font-size: 12.5px; font-weight: 700;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      text-shadow: 0 0 14px currentColor;
+    }
+    #introLegend .ld { margin-top: 6px; font-size: 12px; line-height: 1.55; color: var(--dim); }
+    #gotIt {
+      position: fixed; left: 50%; transform: translateX(-50%); /* top set from JS, under the legend row */
+      z-index: 11; font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.08em;
+      color: var(--text); background: rgba(12, 14, 20, 0.78);
+      border: 1.5px solid #3a3f52; border-radius: 100px; padding: 12px 26px;
+      cursor: pointer; backdrop-filter: blur(8px);
+      opacity: 0; pointer-events: none; transition: opacity 0.35s, border-color 0.2s;
+    }
+    #gotIt.on { opacity: 1; pointer-events: auto; }
+    #gotIt:hover { border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <a class="back" href="/previews/">← previews</a>
+  <div class="title">
+    <div class="k">One deck · every category</div>
+    <h1>The Whole Collection</h1>
+  </div>
+
+  <div id="stage"></div>
+  <div id="fx-dim"></div>
+  <div id="introLegend"></div>
+  <div id="rowLabels"></div>
+  <button id="gotIt">Understood →</button>
+  <div id="deckArea"></div>
+
+  <div id="fx-fill"></div>
+  <div id="fx-rays"></div>
+  <div id="fx-caption"><div class="k"></div><div class="t"></div><div class="d"></div></div>
+  <button id="fx-dismiss">dismiss ✕</button>
+  <div id="fx-poster">
+    <img src="/play/ghost/promo/title.webp" alt="Ghosts in the Dataset" />
+    <div class="banner">
+      <div class="k">★ Coming attraction ★</div>
+      <div class="t">Ghosts in the Dataset</div>
+      <div class="d">A playable cyberpunk arcade world built in Godot 4. This card joins the deck when the web build ships.</div>
+    </div>
+  </div>
+  <div id="fx-toast"></div>
+
+  <div id="help"><b>click asset card</b> to summon · <b>click world card</b> to dive in · in a view, the <b>left edge</b> opens the collection</div>
+  <div class="loading" id="loading">shuffling the deck…</div>
+
+  <script type="module" src="/previews/one-deck.js"></script>
+</body>
+</html>
