@@ -64,7 +64,7 @@ function renderDeck() {
   document.title = 'Generated Worlds — AI 3D Content Generation';
   app.innerHTML = '';
   window.scrollTo(0, 0);
-  deck = createDeck(app, { blender, evals });
+  deck = createDeck(app, { blender, evals, concepts });
 }
 
 // ------------------------------------------------------------- landing
@@ -242,7 +242,7 @@ function renderAssetViewer(slug) {
   const prev = siblings[(idx - 1 + siblings.length) % siblings.length];
   const next = siblings[(idx + 1) % siblings.length];
   const isEnv = item.group === 'environments' || item.group === 'worlds';
-  const conceptUrl = item.group === 'worlds' && concepts[item.slug] ? BASE + concepts[item.slug] : null;
+  const conceptUrl = concepts[item.slug] ? BASE + concepts[item.slug] : null;
   document.title = `${item.title} — Generated Worlds`;
 
   app.innerHTML = `
@@ -335,6 +335,7 @@ function renderAssetViewer(slug) {
     loopPingPong: !!item.loopPingPong,
     thumbFrame: isEnv && thumbParam ? parseFloat(thumbParam) || 1 : 0,
     fpCamera,
+    lightBoost: item.lightBoost || 1,
   });
 
   playBtn.addEventListener('click', () => {

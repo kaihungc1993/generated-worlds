@@ -38,7 +38,7 @@ function shortDesc(prompt) {
 }
 
 /** Build the card list from the already-fetched manifests. */
-export function buildCards(blender, evals) {
+export function buildCards(blender, evals, concepts = {}) {
   const bySlug = Object.fromEntries(blender.map((e) => [e.slug, e]));
   const cards = [];
 
@@ -48,6 +48,7 @@ export function buildCards(blender, evals) {
       id: e.slug, cat: 'assets', kind: 'asset',
       title: e.title, desc: shortDesc(e.prompt),
       thumb: BASE + e.thumbnail, glb: BASE + e.url, sky: null,
+      concept: concepts[e.slug] ? BASE + concepts[e.slug] : null,
       animated: e.animated, loopPingPong: !!e.loopPingPong,
       polys: e.polys, sizeKB: e.sizeKB,
     });
@@ -60,6 +61,7 @@ export function buildCards(blender, evals) {
       title: e.title, desc: shortDesc(e.prompt),
       thumb: BASE + e.thumbnail, glb: BASE + e.url,
       sky: e.sky ? BASE + e.sky : null,
+      concept: concepts[slug] ? BASE + concepts[slug] : null,
       animated: e.animated, polys: e.polys, sizeKB: e.sizeKB,
     });
   }
@@ -69,6 +71,8 @@ export function buildCards(blender, evals) {
       title: e.title, desc: shortDesc(e.prompt),
       thumb: BASE + e.thumbnail, glb: BASE + e.url,
       sky: e.sky ? BASE + e.sky : null,
+      lightBoost: e.lightBoost || 1,
+      concept: concepts[e.slug] ? BASE + concepts[e.slug] : null,
       animated: false, polys: e.polys, sizeKB: e.sizeKB,
     });
   }
@@ -76,7 +80,7 @@ export function buildCards(blender, evals) {
     id: 'ghost-game', cat: 'game', kind: 'game',
     title: 'Ghosts in the Dataset',
     desc: 'A complete cyberpunk arcade world built in Godot 4 — playable right now in your browser.',
-    thumb: BASE + 'play/ghost/promo/street.webp', glb: null, sky: null,
+    thumb: BASE + 'play/ghost/promo/street.webp', glb: null, sky: null, concept: null,
     playUrl: BASE + 'play/ghost/index.html',
     animated: false, polys: 0, sizeKB: 0,
   });
@@ -105,7 +109,7 @@ export function makeCardEl(card) {
         <div class="face front">
           <div class="badge">${cat.short}</div>
           <div class="art" style="background-image:url('${card.thumb}')"></div>
-          <div class="name">${card.title}</div>
+          <div class="name"><span class="name-text">${card.title}</span></div>
           <div class="desc">${card.desc}</div>
           <div class="stats"><span>${stat}</span><span>${SIGILS[card.kind]}</span></div>
           <div class="shine"></div>
@@ -152,7 +156,8 @@ export function fxRefs(root) {
   const $ = (id) => root.querySelector('#' + id);
   return {
     dim: $('fx-dim'), fill: $('fx-fill'), rays: $('fx-rays'),
-    caption: $('fx-caption'), dismiss: $('fx-dismiss'),
+    caption: $('fx-caption'), concept: $('fx-concept'), lightbox: $('fx-lightbox'),
+    dismiss: $('fx-dismiss'),
     poster: $('fx-poster'), toast: $('fx-toast'), stage: $('stage'), help: $('help'),
   };
 }
@@ -163,13 +168,25 @@ export function raysBurst(rays) {
   rays.classList.add('burst');
 }
 
-export function showCaption(caption, card) {
+export function showCaption(fx, card) {
   const cat = CATS[card.cat];
+  const caption = fx.caption;
   caption.querySelector('.k').textContent = cat.label;
   caption.querySelector('.k').style.color = cat.color;
   caption.querySelector('.t').textContent = card.title;
   caption.querySelector('.d').textContent = card.desc;
   caption.classList.add('on');
+  // concept-art reference rides the same lifecycle, any card with art
+  if (fx.concept) {
+    if (card.concept) {
+      const img = fx.concept.querySelector('img');
+      if (img.getAttribute('src') !== card.concept) img.src = card.concept;
+      img.alt = `Concept art for ${card.title}`;
+      fx.concept.classList.add('on');
+    } else {
+      fx.concept.classList.remove('on');
+    }
+  }
 }
 
 export function toast(el, msg) {
@@ -224,9 +241,9 @@ function loadGLBUncached(url, fit) {
 // world by `scale` makes local lights ~1/scale^2 hotter — the candela target
 // is compensated accordingly. Mutates the cached graph, so callers guard with
 // a once-flag on the cached record.
-function adoptSceneLights(lights, scale, hasSky) {
-  const DIR_TARGET = hasSky ? 1.8 : 2.2; // hottest sun/directional lands here
-  const LOCAL_TARGET = 24 * scale * scale; // hottest point/spot (candela)
+function adoptSceneLights(lights, scale, hasSky, boost = 1) {
+  const DIR_TARGET = (hasSky ? 1.8 : 2.2) * boost; // hottest sun/directional lands here
+  const LOCAL_TARGET = 24 * scale * scale * boost; // hottest point/spot (candela)
   const MAX_LOCAL_LIGHTS = 24; // uniform budget; too many lights break shaders
 
   const dirs = lights.filter((l) => l.isDirectionalLight);
@@ -432,17 +449,20 @@ export class Stage {
     if (hasAuthored) {
       // Adopt the exported Blender lighting (normalized once per cached record)
       // and keep only a faint generic fill so the scene isn't double-lit.
+      // card.lightBoost (manifest override) compensates worlds whose authored
+      // look is brighter than the normalized targets.
+      const boost = card.lightBoost || 1;
       if (!loaded.lightsAdopted) {
         loaded.lightsAdopted = true;
-        adoptSceneLights(loaded.lights, loaded.scale, !!skyTex);
+        adoptSceneLights(loaded.lights, loaded.scale, !!skyTex, boost);
       }
       loaded.lights.forEach((l) => { if (!l.userData.culled) l.visible = true; });
-      this.scene.environmentIntensity = skyTex ? 0.6 : 0.5;
+      this.scene.environmentIntensity = (skyTex ? 0.6 : 0.5) * boost;
       // same residual fill rig the thumbnails were rendered with (asset-viewer)
-      const fillKey = new THREE.DirectionalLight(0xfff4e6, skyTex ? 0.35 : 0.55);
+      const fillKey = new THREE.DirectionalLight(0xfff4e6, (skyTex ? 0.35 : 0.55) * boost);
       fillKey.position.set(26, 40, 24);
       this.scene.add(fillKey);
-      const fillRim = new THREE.DirectionalLight(0xbcd0ff, 0.2);
+      const fillRim = new THREE.DirectionalLight(0xbcd0ff, 0.2 * boost);
       fillRim.position.set(-22, 20, -29);
       this.scene.add(fillRim);
     } else {
@@ -621,7 +641,7 @@ export async function focusEnterSummon(stage, fx, card, el) {
   raysBurst(fx.rays);
   mat.remove();
   stage.show(true);
-  showCaption(fx.caption, card);
+  showCaption(fx, card);
   // the card dissolves into the summon
   clone.classList.remove('charging');
   clone.style.opacity = '0';
@@ -686,7 +706,7 @@ export async function focusEnterDive(stage, fx, card, el) {
   stage.show(false);
   pill.remove();
   fx.fill.classList.remove('on');
-  showCaption(fx.caption, card);
+  showCaption(fx, card);
   await flightPromise;
   stage.el.classList.add('interactive');
   return true;
@@ -706,7 +726,7 @@ export async function focusJump(stage, fx, card, fader) {
   }
   if (ok) {
     stage.show(true);
-    showCaption(fx.caption, card);
+    showCaption(fx, card);
   } else {
     toast(fx.toast, 'load failed');
   }
@@ -719,6 +739,8 @@ export function focusExit(stage, fx) {
   stage.hide(true);
   stage.clear();
   fx.caption.classList.remove('on');
+  fx.concept?.classList.remove('on');
+  fx.lightbox?.classList.remove('on');
   fx.dismiss.classList.remove('on');
   fx.dim.style.transition = 'none';
   fx.dim.classList.remove('on');
@@ -748,7 +770,7 @@ export async function posterFlow(fx, card, el) {
   await sleep(300);
   clone.style.display = 'none';
 
-  await onDismiss(fx, '✕');
+  await onDismiss(fx, '← Back');
   fx.dismiss.classList.remove('on');
   fx.poster.classList.remove('on');
   clone.remove();

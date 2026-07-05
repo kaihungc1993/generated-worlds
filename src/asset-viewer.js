@@ -63,7 +63,7 @@ export class AssetViewer {
     this.renderer.setAnimationLoop(() => this.tick());
   }
 
-  async load(url, { environment = false, hideCeilings = false, skyUrl = null, loopPingPong = false, thumbFrame = 0, fpCamera = null } = {}) {
+  async load(url, { environment = false, hideCeilings = false, skyUrl = null, loopPingPong = false, thumbFrame = 0, fpCamera = null, lightBoost = 1 } = {}) {
     try {
       // Baked Blender-world skybox: replaces the studio gradient + IBL.
       const skyPromise = skyUrl
@@ -120,7 +120,7 @@ export class AssetViewer {
       this.keyLight.shadow.camera.updateProjectionMatrix();
       this.rimLight.position.set(-radius, radius * 0.9, -radius * 1.3);
 
-      if (importedLights.length) this.adoptImportedLights(importedLights, radius, !!sky);
+      if (importedLights.length) this.adoptImportedLights(importedLights, radius, !!sky, lightBoost);
 
       if (!environment) {
         // Studio ground: soft shadow catcher + subtle disc.
@@ -214,9 +214,12 @@ export class AssetViewer {
   // viewer's exposure, so normalize per class (preserving authored ratios) and
   // dial the studio rig back so scenes aren't double-lit. Some fill stays:
   // authored lamps are sparse and three.js has no bounce lighting.
-  adoptImportedLights(lights, radius, hasSky) {
-    const DIR_TARGET = hasSky ? 1.8 : 2.2; // hottest sun/directional lands here
-    const LOCAL_TARGET = 24; // hottest point/spot lands here (candela)
+  adoptImportedLights(lights, radius, hasSky, boost = 1) {
+    // boost: per-item manifest override (lightBoost) — normalization makes
+    // authored lamp wattage irrelevant, so dark-colored or dim-looking suns
+    // can be compensated per world without touching shared targets.
+    const DIR_TARGET = (hasSky ? 1.8 : 2.2) * boost; // hottest sun/directional lands here
+    const LOCAL_TARGET = 24 * boost; // hottest point/spot lands here (candela)
     const MAX_LOCAL_LIGHTS = 24; // uniform budget; too many lights break shaders
 
     const dirs = lights.filter((l) => l.isDirectionalLight);
@@ -248,9 +251,9 @@ export class AssetViewer {
 
     // Keep some studio fill, weaker: the baked sky (when present) is already
     // doing IBL, so it gets the lighter touch.
-    this.keyLight.intensity = hasSky ? 0.35 : 0.55;
-    this.rimLight.intensity = 0.2;
-    this.scene.environmentIntensity = hasSky ? 0.6 : 0.5;
+    this.keyLight.intensity = (hasSky ? 0.35 : 0.55) * boost;
+    this.rimLight.intensity = 0.2 * boost;
+    this.scene.environmentIntensity = (hasSky ? 0.6 : 0.5) * boost;
   }
 
   setPlaying(playing) {

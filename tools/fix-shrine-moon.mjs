@@ -14,7 +14,7 @@ const GLB = 'public/blender/evals/japanese-shrine-night-v2.glb';
 const POS = [-45, 95, -58];
 const TARGET = [0, 29, -16];
 const COLOR = [80/255., 103/255., 134/255.]; // deeply saturated blue moonlight
-const INTENSITY = 900000; // raw candela; viewers normalize local lights on load
+const INTENSITY = 9000000; // raw candela; viewers normalize local lights on load
 const OUTER = (34 * Math.PI) / 180;
 const INNER = (16 * Math.PI) / 180;
 
@@ -41,6 +41,32 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
 const doc = await io.read(GLB);
 const root = doc.getRoot();
 
+const parent = root.listScenes()[0];
+
+// soft cool fill from the opposite side so the whole diorama reads at night —
+// directionals are normalized as a group preserving ratios, so a fill at ~45%
+// of KeySun's raw intensity lands at ~45% of the normalized key
+const FILL_RATIO = 0.45;
+const keySun = root.listNodes().find((n) => n.getName() === 'KeySun');
+const keyRaw = keySun?.getExtension('KHR_lights_punctual')?.getIntensity() ?? 785;
+const fillExisting = root.listNodes().find((n) => n.getName() === 'MoonFill');
+if (fillExisting) {
+  fillExisting.getExtension('KHR_lights_punctual').setIntensity(keyRaw * FILL_RATIO);
+  console.log('MoonFill updated');
+} else {
+  const extF = doc.createExtension(KHRLightsPunctual);
+  const fill = extF.createLight('MoonFill')
+    .setType(Light.Type.DIRECTIONAL)
+    .setColor([0.78, 0.85, 1.0])
+    .setIntensity(keyRaw * FILL_RATIO);
+  const fillNode = doc.createNode('MoonFill')
+    .setTranslation([70, 120, 80])
+    .setRotation(aimQuat([-0.42, -0.72, -0.55].map((v, _, a) => v / Math.hypot(...a))))
+    .setExtension('KHR_lights_punctual', fill);
+  parent.addChild(fillNode);
+  console.log('MoonFill created');
+}
+
 // upsert: update the existing MoonSpot in place, or create it
 const existing = root.listNodes().find((n) => n.getName() === 'MoonSpot');
 const dir = [TARGET[0] - POS[0], TARGET[1] - POS[1], TARGET[2] - POS[2]];
@@ -63,7 +89,7 @@ if (existing) {
     .setTranslation(POS)
     .setRotation(aimQuat(dir.map((v) => v / dlen)))
     .setExtension('KHR_lights_punctual', light);
-  root.listScenes()[0].addChild(node);
+  parent.addChild(node);
   console.log('MoonSpot created');
 }
 

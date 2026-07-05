@@ -25,7 +25,7 @@
     "sky": "blender/evals/dune-desert-village-v1-sky.webp",
     "animated": false,
     "polys": 2297955,
-    "sizeKB": 7917
+    "sizeKB": 7918
   },
   {
     "slug": "elden-ring-castle-v2",
@@ -38,8 +38,9 @@
     "thumbnail": "blender/evals/elden-ring-castle-v2.webp",
     "sky": "blender/evals/elden-ring-castle-v2-sky.webp",
     "animated": false,
-    "polys": 2396332,
-    "sizeKB": 8494
+    "polys": 2308393,
+    "sizeKB": 8123,
+    "lightBoost": 3.2
   },
   {
     "slug": "gta5-los-santos-v1",
@@ -53,7 +54,7 @@
     "sky": "blender/evals/gta5-los-santos-v1-sky.webp",
     "animated": false,
     "polys": 4272751,
-    "sizeKB": 18908
+    "sizeKB": 18910
   },
   {
     "slug": "japanese-shrine-night-v2",
@@ -66,8 +67,8 @@
     "thumbnail": "blender/evals/japanese-shrine-night-v2.webp",
     "sky": "blender/evals/japanese-shrine-night-v2-sky.webp",
     "animated": false,
-    "polys": 2707574,
-    "sizeKB": 10835
+    "polys": 2667353,
+    "sizeKB": 10594
   },
   {
     "slug": "post-apocalyptic-city-v2",
@@ -94,7 +95,7 @@
     "thumbnail": "blender/evals/zelda-breath-of-the-wild-village-v1.webp",
     "sky": "blender/evals/zelda-breath-of-the-wild-village-v1-sky.webp",
     "animated": false,
-    "polys": 2960305,
-    "sizeKB": 11439
+    "polys": 2879718,
+    "sizeKB": 11094
   }
 ]

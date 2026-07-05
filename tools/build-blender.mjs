@@ -39,7 +39,6 @@ const OBJECT_KEEP = new Set([
   'paper-cup',
   'plastic-parts-bin-drawer-cabinet',
   'small-conveyor-gate',
-  'wireless-earbuds-charging-case',
 ]);
 
 // Curated keep list for the Simulation Environments section

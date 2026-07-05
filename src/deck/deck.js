@@ -20,7 +20,7 @@ let introPlayed = false;
 // before the shuffle; remounts within the session go straight to the deck.
 let heroPlayed = false;
 
-export function createDeck(container, { blender, evals }) {
+export function createDeck(container, { blender, evals, concepts = {} }) {
   const root = document.createElement('div');
   root.id = 'deck-root';
   if (!heroPlayed) root.classList.add('heromode');
@@ -38,13 +38,17 @@ export function createDeck(container, { blender, evals }) {
     <div id="stage"></div>
     <div id="fx-dim"></div>
     <div id="introLegend"></div>
-    <button id="gotIt">Understood →</button>
+    <button id="gotIt">Explore →</button>
     <div id="deckArea"><div id="deckCanvas"><div id="rowLabels"></div></div></div>
 
     <div id="fx-fill"></div>
     <div id="fx-rays"></div>
-    <div id="fx-caption"><div class="k"></div><div class="t"></div><div class="d"></div></div>
-    <button id="fx-dismiss" aria-label="dismiss">✕</button>
+    <div id="fx-panels">
+      <div id="fx-concept"><div class="k">CONCEPT REFERENCE</div><img alt="" title="click to enlarge" /></div>
+      <div id="fx-caption"><div class="k"></div><div class="t"></div><div class="d"></div></div>
+    </div>
+    <div id="fx-lightbox"><img alt="" /><div class="cap">CONCEPT REFERENCE · CLICK TO CLOSE</div></div>
+    <button id="fx-dismiss" aria-label="back">← Back</button>
     <a id="fx-poster" href="${BASE}play/ghost/index.html" target="_blank" rel="noopener">
       <img src="${BASE}play/ghost/promo/street.webp" alt="Ghosts in the Dataset" />
       <div class="banner">
@@ -71,7 +75,7 @@ export function createDeck(container, { blender, evals }) {
   const fx = fxRefs(root);
   const fader = makeFader(root);
 
-  const cards = buildCards(blender, evals);
+  const cards = buildCards(blender, evals, concepts);
   const entries = cards.map((card) => {
     const el = makeCardEl(card);
     deckCanvas.appendChild(el);
@@ -312,7 +316,7 @@ export function createDeck(container, { blender, evals }) {
       current = entry.card;
       root.classList.add('infocus'); // page chrome steps back
       rail.show(entry.card);
-      fx.dismiss.textContent = '✕';
+      fx.dismiss.textContent = '← Back';
       fx.dismiss.classList.add('on');
     } else {
       rowLabelsEl.classList.add('on');
@@ -327,6 +331,13 @@ export function createDeck(container, { blender, evals }) {
     rowLabelsEl.classList.add('on');
     busy = false;
   }
+
+  // concept reference panel: click-to-enlarge lightbox (any focused card with art)
+  fx.concept.querySelector('img').addEventListener('click', () => {
+    fx.lightbox.querySelector('img').src = fx.concept.querySelector('img').src;
+    fx.lightbox.classList.add('on');
+  });
+  fx.lightbox.addEventListener('click', () => fx.lightbox.classList.remove('on'));
 
   fx.dismiss.addEventListener('click', () => {
     if (!inFocus) return;
@@ -348,31 +359,187 @@ export function createDeck(container, { blender, evals }) {
     else enterFocus(entry);
   });
 
-  // ----------------------------------------------------------- opening shuffle
+  // ----------------------------------------------------------- opening flight
 
-  async function riffle(rounds = 2) {
-    const s = stackPos();
-    const split = Math.min(170, innerWidth * 0.19); // half-deck offset, viewport-safe
-    deckArea.classList.add('fast');
-    for (let r = 0; r < rounds; r++) {
-      entries.forEach((en, i) => {
-        const left = i % 2 === 0;
-        setTimeout(() => {
-          placeCard(en.el, s.x + (left ? -split : split) + jit(18), s.y + jit(14), (left ? -14 : 14) + jit(8));
-        }, i * 6);
-      });
-      await sleep(380);
-      entries.forEach((en, i) => {
-        en.el.style.zIndex = (i * 7) % entries.length;
-        setTimeout(() => placeCard(en.el, s.x + jit(5), s.y + jit(5), jit(7)), (entries.length - i) * 6);
-      });
-      await sleep(420);
+  // Face-up "hero" cards for the opening flight: photogenic art spanning all
+  // four categories so every accent color flashes by mid-tumble. Ids missing
+  // from the manifest are skipped; the quota loop below tops categories up.
+  const FLY_FACEUP = [
+    'le-creuset-stackable-ramekins', 'dishwasher', 'office-chair',
+    'shopping-mall-interior', 'theme-park',
+    'dune-desert-village-v1', 'elden-ring-castle-v2', 'japanese-shrine-night-v2',
+    'ghost-game',
+  ];
+  const FLY_DRIFT = 2100; // ms of free tumbling before the first card is pulled in
+  const FLY_STAGGER = 36; // ms between successive pulls into the stack
+  const FLY_GATHER = 620; // ms for one card's pull
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  function pickFlyFaceUp() {
+    const picked = new Set(
+      FLY_FACEUP.map((id) => entries.find((en) => en.card.id === id)).filter(Boolean),
+    );
+    for (const cat of ['assets', 'sim', 'worlds', 'game']) {
+      const want = cat === 'game' ? 1 : 2;
+      for (const en of catEntries(cat)) {
+        if ([...picked].filter((p) => p.card.cat === cat).length >= want) break;
+        picked.add(en);
+      }
     }
-    entries.forEach((en, i) => {
-      setTimeout(() => placeCard(en.el, s.x + jit(4), s.y - 46 + jit(6), jit(5)), i * 4);
+    return picked;
+  }
+
+  /** Opening "flying cards" beat: the deck tumbles in from beyond the viewport
+   * edges, each card revolving continuously around its own diagonal 3D axis
+   * (rotate3d on .card-tilt, 1–3 full revolutions) so cards genuinely flip
+   * over — front, edge-on shimmer, back — while drifting on gentle bezier
+   * arcs. Every card keeps the .down class throughout; which face shows at a
+   * given instant is purely the revolution phase, and the "hero" cards are
+   * phase-biased to be front-facing during the prominent mid-drift window
+   * (a half revolution past .down shows the front). The gather then eases
+   * each card's angle to the nearest full revolution — flat, back to camera —
+   * so the pile lands face-down exactly where the old riffle ended and
+   * introBeat / dealRows continue unchanged. prepareFlight() is called before
+   * the hero beat so the cards already sit off-screen when the card layer
+   * fades in; transforms are rAF-driven, transitions off via #deckArea.flying. */
+  function prepareFlight() {
+    const s = stackPos();
+    const W = innerWidth;
+    const H = innerHeight;
+    const faceUp = pickFlyFaceUp();
+    deckArea.classList.add('flying');
+
+    // compact layouts use much larger cards relative to the viewport — scale
+    // the flying cloud down so ~25 tumbling cards never clump unreadably
+    const cwNow = parseFloat(deckArea.style.getPropertyValue('--cw')) || 164;
+    const m = Math.min(1, (W * 0.1) / cwNow);
+
+    // arrival order: a strided permutation so consecutive pulls come from
+    // different screen regions instead of sweeping around the ring
+    const order = entries.map((_, i) => (i * 7) % entries.length);
+
+    const flyers = entries.map((en, i) => {
+      const up = faceUp.has(en);
+      // entry edges favor the sides — reads as cards streaming across
+      const side = 'LRTRLB'[i % 6];
+      const off = 120 + Math.random() * 140; // beyond the edge, viewport-safe
+      const start =
+        side === 'L' ? { x: -off, y: H * rnd(0.05, 0.95) }
+        : side === 'R' ? { x: W + off, y: H * rnd(0.05, 0.95) }
+        : side === 'T' ? { x: W * rnd(0.08, 0.92), y: -off }
+        : { x: W * rnd(0.08, 0.92), y: H + off };
+      // drift target: a loose golden-angle ring around the center fills the
+      // screen evenly (no clumps); face-up heroes biased toward the middle
+      const ang = i * 2.39996 + rnd(-0.25, 0.25);
+      const drift = {
+        x: W * 0.5 + Math.cos(ang) * W * (up ? rnd(0.13, 0.3) : rnd(0.12, 0.4)),
+        y: H * 0.48 + Math.sin(ang) * H * (up ? rnd(0.11, 0.26) : rnd(0.1, 0.36)),
+      };
+      // quadratic-bezier control point bows the path into a gentle arc
+      const dx = drift.x - start.x;
+      const dy = drift.y - start.y;
+      const bow = rnd(0.16, 0.38) * (i % 2 ? 1 : -1);
+      const ctrl = {
+        x: (start.x + drift.x) / 2 - dy * bow,
+        y: (start.y + drift.y) / 2 + dx * bow,
+      };
+      const grabAt = FLY_DRIFT + order[i] * FLY_STAGGER;
+      // tumble axis: a diagonal mix of X and Y with a touch of Z, so cards
+      // flip over corner-to-corner like real tossed cards. Heroes stay
+      // Y-dominant so their fronts read upright-ish while facing the camera.
+      const axX = (up ? rnd(0.35, 0.7) : rnd(0.5, 1)) * (Math.random() < 0.5 ? -1 : 1);
+      const axY = (up ? rnd(0.75, 1) : rnd(0.5, 1)) * (Math.random() < 0.5 ? -1 : 1);
+      const axZ = rnd(0.1, 0.35) * (Math.random() < 0.5 ? -1 : 1);
+      const axL = Math.hypot(axX, axY, axZ);
+      // heroes revolve slowly (longer front-facing window); the rest faster
+      const rev = up ? rnd(1, 1.6) : rnd(1.6, 3);
+      const w = (rev * 360 / grabAt) * (i % 3 === 0 ? -1 : 1); // deg/ms
+      // phase bias: while the cloud floats fully formed (~72% into the
+      // drift) heroes pass through a front-showing half revolution (180° on
+      // top of the .down flip), the rest hover around back/edge-on
+      const tm = grabAt * 0.72;
+      const a0 = (up ? 180 + jit(50) : rnd(-130, 130)) - w * tm;
+      return {
+        en, up, start, ctrl, drift,
+        tiltEl: en.el.querySelector('.card-tilt'),
+        axis: `${(axX / axL).toFixed(3)}, ${(axY / axL).toFixed(3)}, ${(axZ / axL).toFixed(3)}`,
+        w, a0,
+        s0: m * (up ? rnd(1.05, 1.55) : rnd(0.55, 1.1)), // heroes fly near-camera
+        s1: m * (up ? rnd(0.95, 1.15) : rnd(0.75, 1.0)),
+        z0: up ? rnd(-40, 180) : rnd(-260, 140), // translateZ parallax depth
+        rot0: rnd(-26, 26),
+        spin: rnd(9, 26) * (i % 2 ? 1 : -1), // lazy in-plane spin, deg/s
+        grabAt,
+        end: { x: s.x + jit(4), y: s.y - 46 + jit(6), rot: jit(5) },
+        zEnd: 40 + order[i],
+        grab: null, done: false, x: 0, y: 0, rot: 0, sc: 1, z: 0, a: 0,
+      };
     });
-    await sleep(300);
-    deckArea.classList.remove('fast');
+
+    for (const f of flyers) {
+      // every card stays .down for the whole flight — which face shows at any
+      // instant is purely the rotate3d phase, so there's no class-flip snap
+      f.en.el.classList.add('down');
+      f.en.el.style.zIndex = 5 + Math.round(f.s0 * 20); // near-camera on top
+      placeCard(f.en.el, f.start.x, f.start.y, f.rot0, 0, f.s0);
+      f.tiltEl.style.transform = `rotate3d(${f.axis}, ${f.a0.toFixed(1)}deg)`;
+    }
+
+    async function run() {
+      const easeOut = (t) => 1 - (1 - t) ** 3;
+      const smooth = (t) => t * t * (3 - 2 * t);
+      await new Promise((resolve) => {
+        let left = flyers.length;
+        const t0 = performance.now();
+        const tick = (now) => {
+          if (destroyed) { resolve(); return; }
+          const t = now - t0;
+          const ts = t / 1000;
+          for (const f of flyers) {
+            if (f.done) continue;
+            let depth = f.z0;
+            if (t < f.grabAt) {
+              // drift: fast entry decelerating into a slow float at the ring,
+              // revolving steadily around the card's own diagonal axis
+              const u = easeOut(Math.min(1, t / f.grabAt));
+              const v = 1 - u;
+              f.x = v * v * f.start.x + 2 * v * u * f.ctrl.x + u * u * f.drift.x;
+              f.y = v * v * f.start.y + 2 * v * u * f.ctrl.y + u * u * f.drift.y;
+              f.rot = f.rot0 + f.spin * ts;
+              f.sc = f.s0 + (f.s1 - f.s0) * u;
+              f.a = f.a0 + f.w * t;
+            } else {
+              if (!f.grab) {
+                // capture the mid-air pose and start the pull; the revolution
+                // finishes at the nearest full turn — flat, back to camera —
+                // so the card lands face-down with no visible snap
+                f.grab = { x: f.x, y: f.y, rot: f.rot, sc: f.sc, a: f.a, aEnd: Math.round(f.a / 360) * 360 };
+                f.en.el.style.zIndex = f.zEnd;
+              }
+              const g = Math.min(1, (t - f.grabAt) / FLY_GATHER);
+              const e = smooth(g);
+              f.x = f.grab.x + (f.end.x - f.grab.x) * e;
+              f.y = f.grab.y + (f.end.y - f.grab.y) * e;
+              f.rot = f.grab.rot + (f.end.rot - f.grab.rot) * e;
+              f.sc = f.grab.sc + (1 - f.grab.sc) * e;
+              f.a = f.grab.a + (f.grab.aEnd - f.grab.a) * e;
+              depth = f.z0 * (1 - e);
+              if (g >= 1) { f.done = true; left--; }
+            }
+            placeCard(f.en.el, f.x, f.y, f.rot, 0, f.sc);
+            f.tiltEl.style.transform = f.done ? '' :
+              `translateZ(${depth.toFixed(1)}px) rotate3d(${f.axis}, ${f.a.toFixed(2)}deg)`;
+          }
+          if (left > 0) requestAnimationFrame(tick);
+          else resolve();
+        };
+        requestAnimationFrame(tick);
+      });
+      deckArea.classList.remove('flying');
+    }
+
+    return { run };
   }
 
   // ----------------------------------------------------------- intro legend beat
@@ -515,16 +682,9 @@ export function createDeck(container, { blender, evals }) {
   }
 
   async function opening() {
-    const s = stackPos();
     sizeCards();
-    entries.forEach((en, i) => {
-      en.el.classList.add('down');
-      placeCard(en.el, s.x + jit(4), s.y + jit(4), jit(6));
-      en.el.style.zIndex = i;
-      en.el.style.transition = 'none';
-    });
-    void deckArea.offsetWidth;
-    entries.forEach((en) => { en.el.style.transition = ''; });
+    // cards start scattered beyond the viewport edges, ready to fly in
+    const flight = prepareFlight();
     loading.classList.add('done');
     // the hero banner plays on every fresh page load, before the shuffle;
     // remounts within the same session skip straight to the deck
@@ -536,7 +696,7 @@ export function createDeck(container, { blender, evals }) {
       await sleep(450);
     }
     if (destroyed) return;
-    await riffle(2);
+    await flight.run();
     if (destroyed) return;
     await sleep(120);
     // the legend beat plays on every fresh page load; remounts within the
