@@ -170,6 +170,11 @@ body.deck-mode {
     margin-left: calc(var(--cw) / -2);
     margin-top: calc(var(--ch) / -2);
     transform-style: preserve-3d;
+    /* the gallery stylesheet's global .card sets overflow:hidden + border +
+       background; overflow!=visible is a CSS-transforms grouping property
+       that silently disables preserve-3d, flattening the tilt/flip subtree
+       into the card's unrotated box — undo all of it here */
+    overflow: visible; border: none; border-radius: 0; background: none;
     transition: transform 0.6s cubic-bezier(0.24, 0.8, 0.28, 1), opacity 0.4s;
     will-change: transform;
     cursor: pointer;
@@ -180,6 +185,10 @@ body.deck-mode {
      tumbling cards must not react to hover/clicks mid-air */
   #deckArea.flying .card { transition: none; pointer-events: none; }
   #deckArea.flying .card-tilt { transition: none; }
+  /* the holo glint is pulsed per-frame from JS as cards sweep edge-on */
+  #deckArea.flying .card .shine { transition: none; }
+  /* stack impact: quick thump of the whole pile as the last card slaps in */
+  #deckCanvas.thump { animation: deckStackThump 0.34s cubic-bezier(0.22, 0.8, 0.3, 1); transform-origin: 50% 46%; }
   .card:hover { z-index: 60; }
   /* intro legend beat: cards are display-only */
   #deckArea.intromode .card { pointer-events: none; cursor: default; }
@@ -660,6 +669,12 @@ body.deck-mode {
   50% { filter: drop-shadow(0 0 26px var(--accent)) drop-shadow(0 0 60px color-mix(in srgb, var(--accent) 70%, transparent)); }
 }
 @keyframes deckMatBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes deckStackThump {
+  0% { transform: scale(1); }
+  28% { transform: scale(1.022) rotate(0.5deg); }
+  62% { transform: scale(0.994) rotate(-0.3deg); }
+  100% { transform: scale(1); }
+}
 @keyframes deckPlunge {
   0% { transform: scale(1); filter: blur(0); }
   60% { transform: scale(1.5); filter: blur(0); }

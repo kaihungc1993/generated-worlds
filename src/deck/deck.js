@@ -370,9 +370,10 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
     'dune-desert-village-v1', 'elden-ring-castle-v2', 'japanese-shrine-night-v2',
     'ghost-game',
   ];
-  const FLY_DRIFT = 2100; // ms of free tumbling before the first card is pulled in
-  const FLY_STAGGER = 36; // ms between successive pulls into the stack
-  const FLY_GATHER = 620; // ms for one card's pull
+  const FLY_DRIFT = 2000; // ms of free tumbling before the first card is pulled in
+  const FLY_STAGGER = 26; // ms between successive pulls into the stack
+  const FLY_GATHER = 480; // ms for one card's pull
+  const FLY_ZCAP = 600; // near-camera excursion cap (perspective is 1100px)
 
   const rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -421,25 +422,34 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
 
     const flyers = entries.map((en, i) => {
       const up = faceUp.has(en);
+      // three energy tiers: heroes (front-facing showcases), crossers (fast
+      // near-camera whooshes across the full screen), floats (background)
+      const crosser = !up && i % 3 === 1;
       // entry edges favor the sides — reads as cards streaming across
       const side = 'LRTRLB'[i % 6];
-      const off = 120 + Math.random() * 140; // beyond the edge, viewport-safe
+      const off = 140 + Math.random() * 220; // beyond the edge, viewport-safe
       const start =
         side === 'L' ? { x: -off, y: H * rnd(0.05, 0.95) }
         : side === 'R' ? { x: W + off, y: H * rnd(0.05, 0.95) }
         : side === 'T' ? { x: W * rnd(0.08, 0.92), y: -off }
         : { x: W * rnd(0.08, 0.92), y: H + off };
-      // drift target: a loose golden-angle ring around the center fills the
-      // screen evenly (no clumps); face-up heroes biased toward the middle
+      // drift target: heroes/floats settle on a loose golden-angle ring;
+      // crossers aim for the far side of the screen so they sweep the whole
+      // frame, passing the center at full speed near the camera
       const ang = i * 2.39996 + rnd(-0.25, 0.25);
-      const drift = {
-        x: W * 0.5 + Math.cos(ang) * W * (up ? rnd(0.13, 0.3) : rnd(0.12, 0.4)),
-        y: H * 0.48 + Math.sin(ang) * H * (up ? rnd(0.11, 0.26) : rnd(0.1, 0.36)),
-      };
-      // quadratic-bezier control point bows the path into a gentle arc
+      const drift = crosser
+        ? {
+          x: start.x < W / 2 ? W * rnd(0.62, 0.9) : W * rnd(0.1, 0.38),
+          y: H * rnd(0.22, 0.78),
+        }
+        : {
+          x: W * 0.5 + Math.cos(ang) * W * (up ? rnd(0.13, 0.3) : rnd(0.12, 0.4)),
+          y: H * 0.48 + Math.sin(ang) * H * (up ? rnd(0.11, 0.26) : rnd(0.1, 0.36)),
+        };
+      // quadratic-bezier control point bows the path into a sweeping arc
       const dx = drift.x - start.x;
       const dy = drift.y - start.y;
-      const bow = rnd(0.16, 0.38) * (i % 2 ? 1 : -1);
+      const bow = rnd(0.2, crosser ? 0.6 : 0.45) * (i % 2 ? 1 : -1);
       const ctrl = {
         x: (start.x + drift.x) / 2 - dy * bow,
         y: (start.y + drift.y) / 2 + dx * bow,
@@ -452,24 +462,28 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
       const axY = (up ? rnd(0.75, 1) : rnd(0.5, 1)) * (Math.random() < 0.5 ? -1 : 1);
       const axZ = rnd(0.1, 0.35) * (Math.random() < 0.5 ? -1 : 1);
       const axL = Math.hypot(axX, axY, axZ);
-      // heroes revolve slowly (longer front-facing window); the rest faster
-      const rev = up ? rnd(1, 1.6) : rnd(1.6, 3);
+      // heroes revolve slowly (longer front-facing window); crossers whip
+      // through several fast flips; floats tumble in between
+      const rev = up ? rnd(1.7, 2.4) : crosser ? rnd(4.2, 6) : rnd(2.6, 4);
       const w = (rev * 360 / grabAt) * (i % 3 === 0 ? -1 : 1); // deg/ms
       // phase bias: while the cloud floats fully formed (~72% into the
       // drift) heroes pass through a front-showing half revolution (180° on
       // top of the .down flip), the rest hover around back/edge-on
       const tm = grabAt * 0.72;
       const a0 = (up ? 180 + jit(50) : rnd(-130, 130)) - w * tm;
+      // depth: crossers get a big translateZ bump mid-pass (swooping toward
+      // the camera and back); floats spread far behind for real parallax
+      const z0 = up ? rnd(-40, 200) : crosser ? rnd(40, 150) : rnd(-460, 120);
+      const zPeak = crosser ? Math.min(FLY_ZCAP - z0, rnd(300, 520)) : 0;
       return {
-        en, up, start, ctrl, drift,
-        tiltEl: en.el.querySelector('.card-tilt'),
+        en, up, crosser, start, ctrl, drift,
+        shineEl: en.el.querySelector('.shine'),
         axis: `${(axX / axL).toFixed(3)}, ${(axY / axL).toFixed(3)}, ${(axZ / axL).toFixed(3)}`,
-        w, a0,
-        s0: m * (up ? rnd(1.05, 1.55) : rnd(0.55, 1.1)), // heroes fly near-camera
+        w, a0, z0, zPeak,
+        s0: m * (up ? rnd(1.05, 1.55) : crosser ? rnd(0.85, 1.1) : rnd(0.55, 1.05)),
         s1: m * (up ? rnd(0.95, 1.15) : rnd(0.75, 1.0)),
-        z0: up ? rnd(-40, 180) : rnd(-260, 140), // translateZ parallax depth
         rot0: rnd(-26, 26),
-        spin: rnd(9, 26) * (i % 2 ? 1 : -1), // lazy in-plane spin, deg/s
+        spin: rnd(12, 34) * (i % 2 ? 1 : -1), // in-plane spin, deg/s
         grabAt,
         end: { x: s.x + jit(4), y: s.y - 46 + jit(6), rot: jit(5) },
         zEnd: 40 + order[i],
@@ -477,18 +491,38 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
       };
     });
 
+    // The tumble must live on the OUTER .card element: rotating the inner
+    // .card-tilt let the browser flatten/clip the subtree at the face layer
+    // (overflow:hidden + backface-visibility on .face), so card content
+    // foreshortened while the rounded-rect outline stayed upright. Composing
+    // the whole pose on .card rotates the entire card — border, radius,
+    // shadow — as one rigid body; .card-tilt stays identity for the flight
+    // and the .down flip on .card-inner works as usual. The inline
+    // perspective() is needed because #deckArea's perspective only reaches
+    // its direct child (#deckCanvas, which flattens) — it gives each card
+    // real trapezoid foreshortening and makes translateZ depth read.
+    const flyTransform = (f) =>
+      `translate3d(${f.x.toFixed(1)}px, ${f.y.toFixed(1)}px, 0px) rotate(${f.rot.toFixed(2)}deg) `
+      + `scale(${f.sc.toFixed(3)}) perspective(1100px) translateZ(${f.z.toFixed(1)}px) `
+      + `rotate3d(${f.axis}, ${f.a.toFixed(2)}deg)`;
+
     for (const f of flyers) {
       // every card stays .down for the whole flight — which face shows at any
       // instant is purely the rotate3d phase, so there's no class-flip snap
       f.en.el.classList.add('down');
       f.en.el.style.zIndex = 5 + Math.round(f.s0 * 20); // near-camera on top
-      placeCard(f.en.el, f.start.x, f.start.y, f.rot0, 0, f.s0);
-      f.tiltEl.style.transform = `rotate3d(${f.axis}, ${f.a0.toFixed(1)}deg)`;
+      f.x = f.start.x; f.y = f.start.y; f.z = f.z0;
+      f.rot = f.rot0; f.sc = f.s0; f.a = f.a0;
+      f.en.el.style.transform = flyTransform(f);
     }
 
     async function run() {
-      const easeOut = (t) => 1 - (1 - t) ** 3;
-      const smooth = (t) => t * t * (3 - 2 * t);
+      // floats/heroes decelerate into the ring; crossers keep most of their
+      // speed through the middle of the frame so the pass reads as a whoosh
+      const easeFloat = (t) => 1 - (1 - t) ** 2.4;
+      const easeCross = (t) => 1 - (1 - t) ** 1.6;
+      const easeSnap = (t) => t ** 1.9; // accelerating suction, hard stop
+      const RAD = Math.PI / 180;
       await new Promise((resolve) => {
         let left = flyers.length;
         const t0 = performance.now();
@@ -498,38 +532,50 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
           const ts = t / 1000;
           for (const f of flyers) {
             if (f.done) continue;
-            let depth = f.z0;
+            let damp = 1;
             if (t < f.grabAt) {
-              // drift: fast entry decelerating into a slow float at the ring,
-              // revolving steadily around the card's own diagonal axis
-              const u = easeOut(Math.min(1, t / f.grabAt));
+              // drift: revolving steadily around the card's own diagonal axis
+              const u = (f.crosser ? easeCross : easeFloat)(Math.min(1, t / f.grabAt));
               const v = 1 - u;
               f.x = v * v * f.start.x + 2 * v * u * f.ctrl.x + u * u * f.drift.x;
               f.y = v * v * f.start.y + 2 * v * u * f.ctrl.y + u * u * f.drift.y;
               f.rot = f.rot0 + f.spin * ts;
               f.sc = f.s0 + (f.s1 - f.s0) * u;
               f.a = f.a0 + f.w * t;
+              // crossers swoop toward the camera mid-pass and recede again
+              f.z = f.z0 + f.zPeak * Math.sin(Math.PI * u);
             } else {
               if (!f.grab) {
                 // capture the mid-air pose and start the pull; the revolution
                 // finishes at the nearest full turn — flat, back to camera —
                 // so the card lands face-down with no visible snap
-                f.grab = { x: f.x, y: f.y, rot: f.rot, sc: f.sc, a: f.a, aEnd: Math.round(f.a / 360) * 360 };
+                f.grab = { x: f.x, y: f.y, rot: f.rot, sc: f.sc, z: f.z, a: f.a, aEnd: Math.round(f.a / 360) * 360 };
                 f.en.el.style.zIndex = f.zEnd;
               }
               const g = Math.min(1, (t - f.grabAt) / FLY_GATHER);
-              const e = smooth(g);
+              const e = easeSnap(g);
               f.x = f.grab.x + (f.end.x - f.grab.x) * e;
               f.y = f.grab.y + (f.end.y - f.grab.y) * e;
               f.rot = f.grab.rot + (f.end.rot - f.grab.rot) * e;
               f.sc = f.grab.sc + (1 - f.grab.sc) * e;
               f.a = f.grab.a + (f.grab.aEnd - f.grab.a) * e;
-              depth = f.z0 * (1 - e);
+              f.z = f.grab.z * (1 - e);
+              damp = 1 - e;
               if (g >= 1) { f.done = true; left--; }
             }
-            placeCard(f.en.el, f.x, f.y, f.rot, 0, f.sc);
-            f.tiltEl.style.transform = f.done ? '' :
-              `translateZ(${depth.toFixed(1)}px) rotate3d(${f.axis}, ${f.a.toFixed(2)}deg)`;
+            // holo glint: the front's shine layer pulses as the revolution
+            // sweeps past edge-on (90°/270°) — a brief catch-the-light flash
+            // on the foreshortened sliver, fading out during the gather
+            const glint = Math.abs(Math.sin(f.a * RAD)) ** 5 * 0.9 * damp;
+            f.shineEl.style.opacity = glint > 0.04 ? glint.toFixed(2) : '0';
+            if (f.done) {
+              // back to the plain placeCard transform so the deal / intro
+              // keep animating from an equivalent baseline
+              placeCard(f.en.el, f.end.x, f.end.y, f.end.rot);
+              f.shineEl.style.opacity = '';
+            } else {
+              f.en.el.style.transform = flyTransform(f);
+            }
           }
           if (left > 0) requestAnimationFrame(tick);
           else resolve();
@@ -537,6 +583,10 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
         requestAnimationFrame(tick);
       });
       deckArea.classList.remove('flying');
+      if (destroyed) return;
+      // impact: the pile takes a quick 1–2px thump as the last card slaps in
+      deckCanvas.classList.add('thump');
+      setTimeout(() => deckCanvas.classList.remove('thump'), 400);
     }
 
     return { run };

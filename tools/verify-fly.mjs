@@ -27,7 +27,7 @@ for (let i = 0; i < 20; i++) {
 }
 // heromode removed -> flight.run() starts ~650ms later
 const t0 = Date.now();
-const shots = [800, 1300, 1850, 2500, 3100, 3700, 4280];
+const shots = [500, 800, 1100, 1400, 1800, 2200, 2600, 3000, 3450];
 for (let i = 0; i < shots.length; i++) {
   const wait = t0 + shots[i] - Date.now();
   if (wait > 0) await page.waitForTimeout(wait);
@@ -51,7 +51,7 @@ await page.evaluate(() => { location.hash = '#gallery'; });
 await page.waitForTimeout(800);
 await page.evaluate(() => { location.hash = ''; });
 const t1 = Date.now();
-for (const ms of [1600, 2800, 4200]) {
+for (const ms of [1400, 2400, 3700]) {
   const wait = t1 + ms - Date.now();
   if (wait > 0) await page.waitForTimeout(wait);
   await page.screenshot({ path: `/tmp/${PREFIX}-remount-t${ms}.png` });
