@@ -119,27 +119,13 @@
   "group": "objects",
   "badge": "Product",
   "title": "Mayonnaise Jar",
-  "prompt": "Model a Woodstock Organic Mayonnaise jar: transparent glass jar with rounded shoulders, narrow threaded neck, and thick base; separate blue ribbed plastic screw lid, creamy mayonnaise fill volume, and printed paper wrap label — lid, jar, threads, contents, and label organized as separate switchable parts.",
+  "prompt": "Model a Woodstock Organic Mayonnaise jar: transparent glass jar with rounded shoulders, narrow threaded neck, and thick base; separate blue ribbed plastic screw lid, creamy mayonnaise fill volume, and printed paper wrap label \u2014 lid, jar, threads, contents, and label organized as separate switchable parts.",
   "url": "blender/product/organic-mayonnaise-jar.glb",
   "thumbnail": "blender/product/organic-mayonnaise-jar.webp",
   "sky": null,
   "animated": false,
   "polys": 276948,
   "sizeKB": 523
- },
- {
-  "slug": "wireless-earbuds-charging-case",
-  "collection": "product",
-  "group": "objects",
-  "badge": "Product",
-  "title": "Wireless Earbuds Charging Case",
-  "prompt": "Generate a pair of wireless earbuds next to their open charging case with smooth contoured shells, silicone ear tips, touch-sensitive outer surfaces, microphone grilles, magnetic lid hinge, LED status indicator, and USB-C port.",
-  "url": "blender/product/wireless-earbuds-charging-case.glb",
-  "thumbnail": "blender/product/wireless-earbuds-charging-case.webp",
-  "sky": null,
-  "animated": false,
-  "polys": 134128,
-  "sizeKB": 164
  },
  {
   "slug": "bathhouse",
@@ -180,8 +166,8 @@
   "thumbnail": "blender/scenes/robotic-arm-assembly-cell.webp",
   "sky": null,
   "animated": true,
-  "polys": 18088,
-  "sizeKB": 289
+  "polys": 18316,
+  "sizeKB": 301
  },
  {
   "slug": "theme-park-ride-system",
@@ -235,9 +221,9 @@
   "url": "blender/outdoor/theme-park.glb",
   "thumbnail": "blender/outdoor/theme-park.webp",
   "sky": "blender/outdoor/theme-park-sky.webp",
-    "animated": false,
-    "polys": 5129653,
-    "sizeKB": 30436
+  "animated": false,
+  "polys": 5129653,
+  "sizeKB": 30436
  },
  {
   "slug": "water-park",
