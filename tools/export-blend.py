@@ -7,6 +7,7 @@
 # blender -b file.blend -P export-blend.py -- /out/file.glb [--object] [--ground-snap]
 import bpy
 import json
+import math
 import re
 import sys
 
@@ -14,6 +15,7 @@ args = sys.argv[sys.argv.index('--') + 1:]
 out_path = args[0]
 is_object = '--object' in args  # single-asset export: strip stage helpers
 ground_snap = '--ground-snap' in args  # scene export: drop floating objects onto terrain
+bake_animation = '--bake-animation' in args  # bake driver-evaluated transforms for glTF
 
 EXCLUDE_TYPES = {'FONT', 'CAMERA'}
 # Fit/orientation annotation helpers the AI pipeline parents next to each
@@ -90,6 +92,7 @@ selected = []
 for o in bpy.data.objects:
     bad = (o.type in EXCLUDE_TYPES
            or (not is_object and o.hide_render)
+           or (is_object and o.hide_render and o.type not in {'EMPTY', 'ARMATURE'})
            or ANNOTATION_MARKERS.search(o.name)
            or (EXCLUDE_NAME and EXCLUDE_NAME.search(o.name))
            or (not is_object and SCENE_EXCLUDE.search(o.name))
@@ -470,19 +473,248 @@ for mat in bpy.data.materials:
         if s.is_linked and not _has_image(s):
             mat.node_tree.links.remove(s.links[0])
 
-# Ensure all animated objects push their actions into NLA so the exporter
-# picks up every clip (some files keep many object-level actions).
 scene = bpy.context.scene
+
+# Articulation-agent files commonly animate root custom properties that drive
+# child transforms. glTF cannot export those custom-property drivers directly,
+# and force-sampling alone ignores driven children with no F-curves of their
+# own. Bake the evaluated transforms in-memory so the shipped GLB contains the
+# visible motion. The source .blend is never saved or modified on disk.
+if bake_animation:
+    candidates = [
+        o for o in selected
+        if o.type in {'MESH', 'EMPTY', 'CURVE', 'SURFACE', 'META', 'ARMATURE'}
+    ]
+
+    # Blender 4 layered actions authored by the generation pipeline do not
+    # always evaluate in background mode, especially muted demo NLA tracks.
+    # Evaluate their F-curves explicitly, then capture the resulting driven
+    # local transforms. This supports both root custom-property controls and
+    # direct per-part transform actions.
+    sources = []
+    for owner in candidates:
+        ad = owner.animation_data
+        if not ad:
+            continue
+        if ad.action:
+            sources.append((owner, ad.action, None))
+        for track in ad.nla_tracks:
+            for strip in track.strips:
+                if strip.action:
+                    sources.append((owner, strip.action, strip))
+
+    custom_prop = re.compile(r'^\["(.+)"\]$')
+
+    def _apply_path(owner, data_path, array_index, value):
+        match = custom_prop.match(data_path)
+        if match:
+            owner[match.group(1)] = value
+            return
+        try:
+            target = owner.path_resolve(data_path)
+            if hasattr(target, '__len__'):
+                target[array_index] = value
+            else:
+                setattr(owner, data_path, value)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            pass
+
+    def _read_path(owner, data_path):
+        match = custom_prop.match(data_path)
+        if match:
+            return owner.get(match.group(1), 0.0)
+        try:
+            return owner.path_resolve(data_path)
+        except (AttributeError, KeyError, ValueError):
+            return 0.0
+
+    driver_curves = [
+        (owner, fc)
+        for owner in candidates
+        if owner.animation_data
+        for fc in owner.animation_data.drivers
+    ]
+    # From this point the source curves are evaluated explicitly below.
+    # Suspend Blender's own action/NLA/driver evaluation so a depsgraph update
+    # cannot overwrite the manually sampled values (muted layered NLA actions
+    # are particularly prone to restoring their pre-animation pose).
+    for owner in candidates:
+        ad = owner.animation_data
+        if not ad:
+            continue
+        ad.action = None
+        for track in ad.nla_tracks:
+            track.mute = True
+        for fc in ad.drivers:
+            fc.mute = True
+    print('ANIMATION_SOURCES::' + json.dumps({
+        'actions': len(sources),
+        'drivers': len(driver_curves),
+        'candidates': len(candidates),
+    }))
+    # Mirror Blender's own driver namespace: it exposes the entire math module
+    # (atan2, sqrt, ...), not just a hand-picked subset. Scissor-linkage rigs
+    # in particular solve their lever angles with atan2 expressions.
+    driver_globals = {'__builtins__': {}, 'abs': abs, 'min': min, 'max': max}
+    driver_globals.update(
+        (name, getattr(math, name)) for name in dir(math) if not name.startswith('_'))
+
+    driver_failures = set()
+
+    def _apply_drivers():
+        # Two passes cover the occasional driver that consumes another driven
+        # property without needing Blender's background depsgraph to retag.
+        for _ in range(2):
+            for owner, fc in driver_curves:
+                values = {}
+                supported = True
+                for var in fc.driver.variables:
+                    target = var.targets[0]
+                    if var.type == 'SINGLE_PROP' and target.id:
+                        values[var.name] = _read_path(target.id, target.data_path)
+                    else:
+                        supported = False
+                        break
+                if not supported:
+                    driver_failures.add(
+                        f'{owner.name}.{fc.data_path}[{fc.array_index}]: unsupported variable type')
+                    continue
+                try:
+                    value = eval(fc.driver.expression, driver_globals, values)
+                    _apply_path(owner, fc.data_path, fc.array_index, value)
+                except (NameError, SyntaxError, TypeError, ValueError, ZeroDivisionError) as exc:
+                    driver_failures.add(
+                        f'{owner.name}.{fc.data_path}[{fc.array_index}]: {exc}')
+
+    def _action_frame(frame, strip):
+        if strip is None:
+            return frame
+        return strip.action_frame_start + (frame - strip.frame_start) / max(strip.scale, 1e-8)
+
+    # Sample evaluated world matrices, then reconstruct ordinary object-local
+    # matrices relative to the evaluated parent. Reading location/rotation/
+    # scale directly loses constraint evaluation and leaves matrix_parent_inverse
+    # to be interpreted a second time by the glTF exporter. In particular,
+    # generated curve meshes (door/drawer handles) can then diverge from their
+    # animated pivot even though their Blender parent link looks correct.
+    frame_world = {}
+    frame_basis = {}
+    # Sample densely: fast eased swings (e.g. a fridge door covering 100° in
+    # under a second) visibly facet at coarser steps once glTF slerps between
+    # the baked keys.
+    bake_frames = list(range(scene.frame_start, scene.frame_end + 1, 2))
+    if bake_frames[-1] != scene.frame_end:
+        bake_frames.append(scene.frame_end)
+    for frame in bake_frames:
+        scene.frame_set(frame)
+        for owner, action, strip in sources:
+            action_frame = _action_frame(frame, strip)
+            for fc in action.fcurves:
+                _apply_path(owner, fc.data_path, fc.array_index, fc.evaluate(action_frame))
+        _apply_drivers()
+        bpy.context.view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        frame_world[frame] = {
+            o: o.evaluated_get(depsgraph).matrix_world.copy()
+            for o in candidates
+        }
+        frame_basis[frame] = {o: o.matrix_basis.copy() for o in candidates}
+
+    candidate_set = set(candidates)
+
+    def _local_matrix(o, worlds, bases):
+        # Object parenting is the hierarchy used by generated articulated
+        # assets. Preserve Blender's native basis for bone/vertex parenting,
+        # whose parent-space rules need armature/vertex-specific evaluation.
+        if o.parent in candidate_set and o.parent_type == 'OBJECT':
+            return worlds[o.parent].inverted_safe() @ worlds[o]
+        if o.parent is None:
+            return worlds[o]
+        return bases[o]
+
+    frame_locals = {
+        frame: {o: _local_matrix(o, worlds, frame_basis[frame]) for o in candidates}
+        for frame, worlds in frame_world.items()
+    }
+    first = frame_locals[scene.frame_start]
+    bake_targets = [
+        o for o in candidates
+        if any(
+            any(abs(first[o][row][col] - matrices[o][row][col]) > 1e-7
+                for row in range(4) for col in range(4))
+            for matrices in frame_locals.values()
+        )
+    ]
+    print('ANIMATION_TARGETS::' + json.dumps([o.name for o in bake_targets]))
+    if driver_failures:
+        # Loud but non-fatal: a skipped driver means some linkage part keeps
+        # its rest pose while the rest of the mechanism animates.
+        print('DRIVER_FAILURES::' + json.dumps(sorted(driver_failures)))
+
+    # Remove source actions/drivers from export targets and replace them with
+    # ordinary transform keyframes that glTF can carry. Normalize object
+    # parenting to explicit local matrices first, including static children:
+    # those children then inherit the animated parent's transform exactly and
+    # need no redundant animation track of their own.
+    for o in candidates:
+        if o.animation_data:
+            o.animation_data_clear()
+    for o in candidates:
+        if o.parent in candidate_set and o.parent_type == 'OBJECT':
+            o.matrix_parent_inverse.identity()
+            o.matrix_basis = first[o]
+    # Bake rotations as quaternions with explicit hemisphere continuity.
+    # Decomposing a matrix yields q or -q arbitrarily, and euler modes are
+    # worse: hinge empties whose rest pose is 180° about an axis sit exactly
+    # on the euler decomposition boundary, so consecutive keys hop between
+    # equivalent representations whose quaternions have opposite signs. glTF
+    # samplers interpolate raw components with no neighborhood correction, so
+    # those sign flips make doors whip mid-swing in the web viewer. Keying
+    # rotation_quaternion directly (the .blend is never saved) and forcing
+    # each key onto the previous key's hemisphere keeps playback smooth.
+    for o in bake_targets:
+        o.rotation_mode = 'QUATERNION'
+    prev_rot = {}
+    for frame, matrices in frame_locals.items():
+        for o in bake_targets:
+            o.matrix_basis = matrices[o]
+            quat = o.rotation_quaternion.copy()
+            prev = prev_rot.get(o)
+            if prev is not None and quat.dot(prev) < 0:
+                quat.negate()
+                o.rotation_quaternion = quat
+            prev_rot[o] = quat
+            o.keyframe_insert(data_path='location', frame=frame, group='web_export')
+            o.keyframe_insert(data_path='rotation_quaternion', frame=frame, group='web_export')
+            o.keyframe_insert(data_path='scale', frame=frame, group='web_export')
+    if bake_targets:
+        print('ANIMATION_BAKED::' + json.dumps({
+            'objects': len(bake_targets),
+            'frames': [scene.frame_start, scene.frame_end],
+        }))
+    scene.frame_set(scene.frame_start)
+    bpy.context.view_layer.update()
+    for o in selected:
+        try:
+            o.select_set(True)
+        except RuntimeError:
+            pass
 
 bpy.ops.export_scene.gltf(
     filepath=out_path,
     export_format='GLB',
     use_selection=True,
     export_animations=True,
-    export_animation_mode='SCENE',  # bake the scene timeline into one clip
+    # Baked transform actions can be emitted directly. Scene mode would
+    # re-evaluate the entire assembly for every frame and is prohibitively
+    # expensive on gear-heavy assets such as the SG90.
+    export_animation_mode='ACTIVE_ACTIONS' if bake_animation else 'SCENE',
     export_frame_range=True,
-    export_force_sampling=True,
-    export_optimize_animation_size=True,
+    # Driver-based Fable exports are already sampled into ordinary transform
+    # keys above. Re-sampling and curve optimization here is extremely costly
+    # for assembly animations and adds no fidelity.
+    export_force_sampling=not bake_animation,
+    export_optimize_animation_size=not bake_animation,
     export_apply=True,
     # Geometry-nodes instancers (e.g. dockyard's container/pallet zones)
     # otherwise evaluate to empty meshes and silently vanish from the GLB.

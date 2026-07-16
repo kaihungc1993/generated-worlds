@@ -8,9 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "blender:build": "node tools/build-blender.mjs",
-    "blender:thumbs": "node tools/capture-thumbs.mjs"
+    "blender:thumbs": "node tools/capture-thumbs.mjs",
+    "fable:export": "node tools/export-fable-assets.mjs",
+    "fable:build": "node tools/build-fable-assets.mjs",
+    "fable:thumbs": "node tools/capture-thumbs.mjs --manifest blender-fable.json"
   },
   "dependencies": {
+    "@sparkjsdev/spark": "^2.1.0",
     "three": "^0.185.1"
   },
   "devDependencies": {

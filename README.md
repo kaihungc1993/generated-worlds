@@ -31,6 +31,20 @@ Source data expected under `/tmp/blender-assets/` (unzipped from
 `articulated-objects.zip` and the `blender_scene/*.zip` archives) and exported GLBs
 under `/tmp/blend-glb/`.
 
+The current object showcase defaults to the curated Fable set in
+`public/data/blender-fable.json`; the original Opus 4.7 objects remain in
+`public/data/blender.json`. Use `?assets=fable` or `?assets=opus` to select a
+set without rebuilding the site. Rebuild the Fable artifacts with:
+
+```sh
+npm run fable:export
+npm run fable:build
+npm run fable:thumbs -- --url http://localhost:5173
+```
+
+`FABLE_RUNS_ROOT` can override the default sibling checkout path used by the
+export configuration.
+
 ### Blender worlds (eval outdoor scenes)
 
 Full outdoor worlds from the reconstruct-scene eval runs, shown as the

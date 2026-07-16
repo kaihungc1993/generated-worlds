@@ -6,6 +6,7 @@ const app = document.getElementById('app');
 let blender = [];
 let evals = [];
 let concepts = {};
+let assetSet = 'fable';
 let viewer = null;
 let deck = null;
 
@@ -21,14 +22,23 @@ const PIPELINE = [
 ];
 
 async function boot() {
-  const [b, e, c] = await Promise.all([
+  const [b, f, e, c] = await Promise.all([
     fetch(BASE + 'data/blender.json').then((r) => (r.ok ? r.json() : [])),
+    fetch(BASE + 'data/blender-fable.json').then((r) => (r.ok ? r.json() : [])).catch(() => []),
     fetch(BASE + 'data/evals.json').then((r) => (r.ok ? r.json() : [])),
     fetch(BASE + 'data/concepts.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({})),
   ]);
-  blender = [...b, ...e];
+  // Fable is the current showcase set. Add ?assets=opus to inspect the
+  // preserved original object set; the environment/world collections stay
+  // identical in both modes.
+  assetSet = new URLSearchParams(location.search).get('assets') === 'opus' ? 'opus' : 'fable';
+  const opusObjects = b.filter((item) => item.group === 'objects');
+  const selectedObjects = assetSet === 'fable' && f.length ? f : opusObjects;
+  if (assetSet === 'fable' && !f.length) assetSet = 'opus';
+  blender = [...selectedObjects, ...b.filter((item) => item.group !== 'objects'), ...e];
   evals = e;
   concepts = c;
+  document.documentElement.dataset.assetSet = assetSet;
   route();
   window.addEventListener('hashchange', route);
 }
@@ -242,7 +252,13 @@ function renderAssetViewer(slug) {
   const prev = siblings[(idx - 1 + siblings.length) % siblings.length];
   const next = siblings[(idx + 1) % siblings.length];
   const isEnv = item.group === 'environments' || item.group === 'worlds';
-  const conceptUrl = concepts[item.slug] ? BASE + concepts[item.slug] : null;
+  // concepts.json values are a single path (Opus/worlds) or an array of
+  // reference photos / demo videos (Fable runs); normalize to a list of URLs.
+  const conceptUrls = [].concat(concepts[item.slug] || []).map((p) => BASE + p);
+  const isVideoUrl = (u) => /\.(mp4|webm)$/i.test(u);
+  // The workbench ships an Isaac Sim robot-simulation trailer instead of
+  // still reference art; label the panel for what it actually shows.
+  const conceptLabel = conceptUrls.some(isVideoUrl) ? 'ISAAC SIM SIMULATION' : 'CONCEPT REFERENCE';
   document.title = `${item.title} — Generated Worlds`;
 
   app.innerHTML = `
@@ -271,10 +287,14 @@ function renderAssetViewer(slug) {
         </div>
         <div class="hud-bottom hud-bottom-asset">
           <div class="hud-left-stack">
-            ${conceptUrl ? `
+            ${conceptUrls.length ? `
             <div class="concept-panel">
-              <div class="prompt-label">CONCEPT REFERENCE</div>
-              <img class="concept-thumb" src="${conceptUrl}" alt="Concept art for ${escapeHtml(item.title)}" title="click to enlarge" />
+              <div class="prompt-label">${conceptLabel}</div>
+              <div class="concept-thumbs${conceptUrls.length > 1 ? ' multi' : ''}">
+                ${conceptUrls.map((url, i) => (isVideoUrl(url) ? `
+                <video class="concept-thumb" src="${url}" data-concept-idx="${i}" autoplay muted loop playsinline title="click to enlarge"></video>` : `
+                <img class="concept-thumb" src="${url}" data-concept-idx="${i}" alt="Concept reference ${i + 1} for ${escapeHtml(item.title)}" title="click to enlarge" />`)).join('')}
+              </div>
             </div>` : ''}
             ${item.prompt ? `
             <div class="prompt-panel">
@@ -324,6 +344,7 @@ function renderAssetViewer(slug) {
   // never set during normal browsing, so visitors see the default framing.
   const search = new URLSearchParams(location.search);
   const thumbParam = search.get('thumb');
+  const tvParam = search.get('tv');
   const fpParam = search.get('fp');
   const fpCamera = isEnv && fpParam ? parseFpParam(fpParam) : null;
   viewer.load(item.url, {
@@ -332,8 +353,12 @@ function renderAssetViewer(slug) {
     // real room, not a dollhouse.
     hideCeilings: !fpCamera && (item.collection === 'interiors' || item.collection === 'scenes'),
     skyUrl: item.sky ? BASE + item.sky : null,
+    splatUrl: item.splat || null,
+    splatTransform: item.splatTransform || null,
+    splatGroundLift: item.splatGroundLift || 0,
     loopPingPong: !!item.loopPingPong,
     thumbFrame: isEnv && thumbParam ? parseFloat(thumbParam) || 1 : 0,
+    thumbView: !isEnv && tvParam ? parseTvParam(tvParam) : null,
     fpCamera,
     lightBoost: item.lightBoost || 1,
   });
@@ -350,18 +375,21 @@ function renderAssetViewer(slug) {
     timeEl.textContent = t.toFixed(1) + 's';
   });
 
-  const conceptThumb = app.querySelector('.concept-thumb');
-  if (conceptThumb) {
-    conceptThumb.addEventListener('click', () => openConceptLightbox(conceptUrl, item.title));
-  }
+  app.querySelectorAll('.concept-thumb').forEach((thumb) => {
+    thumb.addEventListener('click', () =>
+      openConceptLightbox(conceptUrls[Number(thumb.dataset.conceptIdx)], item.title));
+  });
 }
 
 function openConceptLightbox(url, title) {
+  const isVideo = /\.(mp4|webm)$/i.test(url);
   const overlay = document.createElement('div');
   overlay.className = 'concept-lightbox';
   overlay.innerHTML = `
-    <img src="${url}" alt="Concept art for ${escapeHtml(title)}" />
-    <div class="concept-lightbox-caption">CONCEPT REFERENCE — ${escapeHtml(title.toUpperCase())} · CLICK OR ESC TO CLOSE</div>
+    ${isVideo
+      ? `<video src="${url}" autoplay muted loop playsinline controls></video>`
+      : `<img src="${url}" alt="Concept art for ${escapeHtml(title)}" />`}
+    <div class="concept-lightbox-caption">${isVideo ? 'ISAAC SIM SIMULATION' : 'CONCEPT REFERENCE'} — ${escapeHtml(title.toUpperCase())} · CLICK OR ESC TO CLOSE</div>
   `;
   const close = () => {
     overlay.remove();
@@ -370,13 +398,21 @@ function openConceptLightbox(url, title) {
   const onKey = (e) => {
     if (e.key === 'Escape') close();
   };
-  overlay.addEventListener('click', close);
+  // clicks on the video itself drive its controls; the backdrop closes
+  overlay.addEventListener('click', (e) => { if (!isVideo || e.target === overlay) close(); });
   document.addEventListener('keydown', onKey);
   document.body.appendChild(overlay);
 }
 
 // ?fp=x,y,z,yaw[,pitch[,fov]] — first-person capture camera, in the GLB's
 // original (pre-centering) coordinates; yaw/pitch in degrees, yaw 0 = -Z.
+// ?tv=yaw,pitch,zoom[,tx,ty,tz] — object thumbnail view (capture scripts only).
+function parseTvParam(raw) {
+  const [yaw = 43, pitch = 25, zoom = 1, tx = 0, ty = 0.45, tz = 0] = raw.split(',').map(Number);
+  if (![yaw, pitch, zoom].every(Number.isFinite)) return null;
+  return { yaw, pitch, zoom, tx: tx || 0, ty: Number.isFinite(ty) ? ty : 0.45, tz: tz || 0 };
+}
+
 function parseFpParam(raw) {
   const parts = raw.split(',').map(Number);
   if (parts.length < 3 || !parts.slice(0, 3).every(Number.isFinite)) return null;

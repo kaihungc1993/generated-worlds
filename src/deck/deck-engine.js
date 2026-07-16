@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { makeStudioEnvTexture } from '../studio-env.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const BASE = import.meta.env.BASE_URL;
@@ -13,8 +13,8 @@ const BASE = import.meta.env.BASE_URL;
 // ---------------------------------------------------------------- categories
 
 export const CATS = {
-  assets: { label: 'Articulated Assets', short: 'ASSET', color: '#ff5c5c', kind: 'asset' },
-  sim: { label: 'Greybox Scenes', short: 'GREYBOX', color: '#8ef0c0', kind: 'scene' },
+  assets: { label: 'Articulated Assets', short: 'ASSET', model: 'OPUS 4.7', color: '#ff5c5c', kind: 'asset' },
+  sim: { label: 'Greybox Scenes', short: 'GREYBOX', model: 'OPUS 4.7', color: '#8ef0c0', kind: 'scene' },
   worlds: { label: 'Generated Worlds', short: 'WORLD', color: '#7c9eff', kind: 'scene' },
   game: { label: 'Playable Game', short: 'GAME', color: '#ffd75e', kind: 'game' },
 };
@@ -40,6 +40,9 @@ function shortDesc(prompt) {
 /** Build the card list from the already-fetched manifests. */
 export function buildCards(blender, evals, concepts = {}) {
   const bySlug = Object.fromEntries(blender.map((e) => [e.slug, e]));
+  // concepts.json values are a single path (Opus/worlds) or an array of
+  // reference photos (Fable runs); normalize to a list of URLs.
+  const conceptUrls = (slug) => [].concat(concepts[slug] || []).map((p) => BASE + p);
   const cards = [];
 
   // Assets row: every object in the manifest, same set as the classic gallery.
@@ -47,10 +50,20 @@ export function buildCards(blender, evals, concepts = {}) {
     cards.push({
       id: e.slug, cat: 'assets', kind: 'asset',
       title: e.title, desc: shortDesc(e.prompt),
-      thumb: BASE + e.thumbnail, glb: BASE + e.url, sky: null,
-      concept: concepts[e.slug] ? BASE + concepts[e.slug] : null,
+      thumb: BASE + e.thumbnail, glb: BASE + e.url,
+      // Baked skybox (e.g. the workbench scene's splat-derived lab room)
+      // becomes the summon backdrop; a live gaussian splat (`splat`) replaces
+      // it as the visible room, with the camera orbiting a fixed scene.
+      // info feeds the "about this scene" popup.
+      sky: e.sky ? BASE + e.sky : null,
+      splat: e.splat ? BASE + e.splat : null,
+      splatTransform: e.splatTransform || null,
+      splatGroundLift: e.splatGroundLift || 0,
+      info: e.info || null,
+      deckBadge: e.deckBadge || null,
+      concepts: conceptUrls(e.slug),
       animated: e.animated, loopPingPong: !!e.loopPingPong,
-      polys: e.polys, sizeKB: e.sizeKB,
+      model: e.model || null, polys: e.polys, sizeKB: e.sizeKB,
     });
   }
   for (const slug of SIM_SLUGS) {
@@ -61,7 +74,8 @@ export function buildCards(blender, evals, concepts = {}) {
       title: e.title, desc: shortDesc(e.prompt),
       thumb: BASE + e.thumbnail, glb: BASE + e.url,
       sky: e.sky ? BASE + e.sky : null,
-      concept: concepts[slug] ? BASE + concepts[slug] : null,
+      info: e.info || null,
+      concepts: conceptUrls(slug),
       animated: e.animated, polys: e.polys, sizeKB: e.sizeKB,
     });
   }
@@ -71,8 +85,9 @@ export function buildCards(blender, evals, concepts = {}) {
       title: e.title, desc: shortDesc(e.prompt),
       thumb: BASE + e.thumbnail, glb: BASE + e.url,
       sky: e.sky ? BASE + e.sky : null,
+      info: e.info || null,
       lightBoost: e.lightBoost || 1,
-      concept: concepts[e.slug] ? BASE + concepts[e.slug] : null,
+      concepts: conceptUrls(e.slug),
       animated: false, polys: e.polys, sizeKB: e.sizeKB,
     });
   }
@@ -80,7 +95,7 @@ export function buildCards(blender, evals, concepts = {}) {
     id: 'ghost-game', cat: 'game', kind: 'game',
     title: 'Ghosts in the Dataset',
     desc: 'A complete cyberpunk arcade world built in Godot 4 — playable right now in your browser.',
-    thumb: BASE + 'play/ghost/promo/street.webp', glb: null, sky: null, concept: null,
+    thumb: BASE + 'play/ghost/promo/street.webp', glb: null, sky: null, concepts: [],
     playUrl: BASE + 'play/ghost/index.html',
     animated: false, polys: 0, sizeKB: 0,
   });
@@ -94,6 +109,7 @@ const SIGILS = { asset: '⚙', scene: '✦', game: '▶' };
 /** Build a .card element (front + back faces, tilt + flip wrappers). */
 export function makeCardEl(card) {
   const cat = CATS[card.cat];
+  const model = card.model || cat.model;
   const el = document.createElement('div');
   el.className = 'card down';
   el.dataset.kind = card.kind;
@@ -107,8 +123,10 @@ export function makeCardEl(card) {
     <div class="card-tilt">
       <div class="card-inner">
         <div class="face front">
-          <div class="badge">${cat.short}</div>
-          <div class="art" style="background-image:url('${card.thumb}')"></div>
+          <div class="badge${card.deckBadge ? ' badge-outline' : ''}">${card.deckBadge || cat.short}</div>
+          <div class="art" style="background-image:url('${card.thumb}')">
+            ${model ? `<div class="model-badge" title="Generated with ${model}">${model}</div>` : ''}
+          </div>
           <div class="name"><span class="name-text">${card.title}</span></div>
           <div class="desc">${card.desc}</div>
           <div class="stats"><span>${stat}</span><span>${SIGILS[card.kind]}</span></div>
@@ -157,6 +175,7 @@ export function fxRefs(root) {
   return {
     dim: $('fx-dim'), fill: $('fx-fill'), rays: $('fx-rays'),
     caption: $('fx-caption'), concept: $('fx-concept'), lightbox: $('fx-lightbox'),
+    infoBtn: root.querySelector('#fx-caption .info-btn'), infobox: $('fx-infobox'),
     dismiss: $('fx-dismiss'),
     poster: $('fx-poster'), toast: $('fx-toast'), stage: $('stage'), help: $('help'),
   };
@@ -176,12 +195,45 @@ export function showCaption(fx, card) {
   caption.querySelector('.t').textContent = card.title;
   caption.querySelector('.d').textContent = card.desc;
   caption.classList.add('on');
-  // concept-art reference rides the same lifecycle, any card with art
+  // manifest-driven "about this scene" popup: any card with `info` opts in.
+  // Auto-open on every entry into this card's focus view (showCaption runs
+  // once per summon/dive/rail-jump, never on camera moves) so the context
+  // reads first; the ⓘ button re-opens it after dismissal.
+  if (fx.infoBtn && fx.infobox) {
+    fx.infoBtn.hidden = !card.info;
+    if (card.info) {
+      fx.infobox.querySelector('.t').textContent = card.title;
+      const d = fx.infobox.querySelector('.d');
+      if (Array.isArray(card.info)) {
+        // bullet-list form (e.g. the workbench scene)
+        d.innerHTML = '';
+        const ul = document.createElement('ul');
+        for (const line of card.info) {
+          const li = document.createElement('li');
+          li.textContent = line;
+          ul.appendChild(li);
+        }
+        d.appendChild(ul);
+      } else {
+        d.textContent = card.info;
+      }
+    }
+    fx.infobox.classList.toggle('on', !!card.info);
+  }
+  // concept-art reference rides the same lifecycle, any card with art.
+  // Entries may be still photos or demo videos (the workbench's Isaac Sim
+  // robot-simulation trailer); videos autoplay muted in the thumbnail box.
   if (fx.concept) {
-    if (card.concept) {
-      const img = fx.concept.querySelector('img');
-      if (img.getAttribute('src') !== card.concept) img.src = card.concept;
-      img.alt = `Concept art for ${card.title}`;
+    if (card.concepts?.length) {
+      const isVideo = (u) => /\.(mp4|webm)$/i.test(u);
+      const wrap = fx.concept.querySelector('.imgs');
+      const label = fx.concept.querySelector('.k');
+      if (label) label.textContent = card.concepts.some(isVideo) ? 'ISAAC SIM SIMULATION' : 'CONCEPT REFERENCE';
+      wrap.classList.toggle('multi', card.concepts.length > 1);
+      wrap.innerHTML = card.concepts.map((url, i) => (isVideo(url)
+        ? `<video src="${url}" autoplay muted loop playsinline title="click to enlarge"></video>`
+        : `<img src="${url}" alt="Concept reference ${i + 1} for ${card.title}" title="click to enlarge" />`
+      )).join('');
       fx.concept.classList.add('on');
     } else {
       fx.concept.classList.remove('on');
@@ -219,7 +271,14 @@ function loadGLBUncached(url, fit) {
       // Keep embedded KHR lights in the graph; summon/dive decide per-mode
       // whether to hide them (studio look) or adopt + normalize them.
       const lights = [];
-      model.traverse((o) => { if (o.isLight) lights.push(o); });
+      model.traverse((o) => {
+        if (o.isLight) lights.push(o);
+        // Anisotropy without a tangent frame turns three.js's specular into
+        // NaN (hard black wedges); see the same guard in asset-viewer.js.
+        if (o.isMesh && o.material?.anisotropy > 0 && !o.geometry.attributes.tangent) {
+          o.material.anisotropy = 0;
+        }
+      });
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       const s = fit / Math.max(size.x, size.y, size.z);
@@ -274,6 +333,15 @@ function loadSky(url) {
   });
 }
 
+// Real gaussian-splat world (shared Spark helper, lazy-imported so the
+// renderer stays out of the bundle for cards that don't ship one). Not
+// cached: SplatMesh owns GPU state tied to its scene graph life, so each
+// summon gets a fresh instance.
+function loadSplat(renderer, url, transform) {
+  return import('../splat-world.js')
+    .then(({ createSplatWorld }) => createSplatWorld(renderer, url, transform));
+}
+
 export class Stage {
   constructor(container) {
     this.el = container;
@@ -286,8 +354,9 @@ export class Stage {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 0.05, 900);
-    this.pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.roomEnv = this.pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    // Soft-gradient studio IBL shared with asset-viewer.js: RoomEnvironment's
+    // hard panels mirrored as a black/white split on flat glossy metals.
+    this.roomEnv = makeStudioEnvTexture(this.renderer);
 
     this.clock = new THREE.Clock();
     this.mixer = null;
@@ -331,7 +400,7 @@ export class Stage {
     cancelAnimationFrame(this._raf);
     removeEventListener('resize', this._onResize);
     this.controls.dispose();
-    this.pmrem.dispose();
+    this.roomEnv.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -353,12 +422,19 @@ export class Stage {
 
   clear() {
     this._op = {}; // invalidates any in-flight summon/dive
+    if (this.splat) {
+      const world = this.splat;
+      import('../splat-world.js').then(({ disposeSplatWorld }) => disposeSplatWorld(world));
+    }
+    this.splat = null;
     this.content.clear();
     this.mixer = null;
     this.spin = null;
     this.float = null;
     this.flight = null;
     this.controls.enabled = false;
+    this.controls.autoRotate = false;
+    this.controls.maxPolarAngle = Math.PI; // splat cards clamp this per-summon
     this.underLight = null;
     this.scene.background = null;
     this.scene.environment = null;
@@ -367,11 +443,27 @@ export class Stage {
   }
 
   /** Yu-Gi-Oh summon: the model materializes and levitates in the air —
-   * no platform, no particles, neutral studio lighting so materials read true. */
+   * no platform, no particles, neutral studio lighting so materials read true.
+   * Cards with a baked skybox (the workbench scene's splat-derived lab room)
+   * summon inside it: the panorama becomes both backdrop and IBL. */
   async summon(card) {
     this.clear();
-    this.scene.environment = this.roomEnv;
-    this.scene.environmentIntensity = 0.85;
+    const op = this._op;
+    const [skyTex, splat, { group, animations, lights, model }] = await Promise.all([
+      card.sky ? loadSky(card.sky) : Promise.resolve(null),
+      card.splat ? loadSplat(this.renderer, card.splat, card.splatTransform) : Promise.resolve(null),
+      loadGLB(card.glb, 1.9),
+    ]);
+    if (op !== this._op) return false; // superseded by a newer summon/dive
+    if (skyTex) {
+      this.scene.background = skyTex;
+      this.scene.environment = skyTex;
+      this.scene.environmentIntensity = 1.0;
+      this.scene.backgroundIntensity = 1.0;
+    } else {
+      this.scene.environment = this.roomEnv;
+      this.scene.environmentIntensity = 0.85;
+    }
 
     this.scene.add(new THREE.AmbientLight(0x494e5c, 0.8));
     const key = new THREE.DirectionalLight(0xffffff, 2.4);
@@ -388,18 +480,59 @@ export class Stage {
     this.camera.position.set(2.9, 1.9, 3.9);
     this.camera.lookAt(0, 1.3, 0);
     this.camera.up.set(0, 1, 0);
-
-    const op = this._op;
-    const { group, animations, lights } = await loadGLB(card.glb, 1.9);
-    if (op !== this._op) return false; // superseded by a newer summon/dive
     // assets are studio pieces: hide any embedded lamps so the neutral rig reads true
     lights.forEach((l) => { l.visible = false; });
-    // model is grounded at y=0 inside the group — lift the whole group so it hovers
     group.scale.setScalar(0.01);
     this.content.add(group);
-    this.spin = group;
-    this.float = { group, base: 0.55 };
-    group.position.y = 0.55;
+    const groundY = splat ? 0 : 0.55;
+    if (splat) {
+      // Splat-world cards are captured scenes, not studio pieces: the world
+      // and object stay fixed and grounded while the CAMERA orbits — the
+      // levitation/turntable treatment would shear the object out of its
+      // photographic room.
+      this.splat = splat;
+      // The splat ships as the original capture with the hand-tuned Blender
+      // placement applied inside splat.wrap. Compose it under the model's
+      // fit-normalization so the room tracks the normalized object. The
+      // ground lift lowers the ROOM (fresh group each summon — the cached
+      // model is never mutated) so the fuzzy splat floor's rendered surface
+      // meets the object's feet instead of swallowing them.
+      const lift = (card.splatGroundLift || 0) * model.scale.x;
+      const outer = new THREE.Group();
+      outer.scale.copy(model.scale);
+      outer.position.copy(model.position);
+      outer.position.y -= lift;
+      outer.add(splat.wrap);
+      group.add(outer);
+      this.scene.add(splat.sparkRenderer);
+      group.position.y = 0;
+      // Match the Isaac Sim rig used for the demo renders (IsaacSim
+      // wb_render_demo.py: dome 260, key 1050 @ (-72°, 15°), fill 300 @
+      // (-25°, 65°), converted from Z-up USD): neutral-white key from high
+      // behind, soft fill, dimmed IBL — same balance as the studio viewer.
+      this.scene.environmentIntensity = 0.75;
+      key.color.set(0xffffff);
+      key.intensity = 3.0;
+      key.position.set(0.4, 1.4, -4.5);
+      const isaacFill = new THREE.DirectionalLight(0xffffff, 0.86);
+      isaacFill.position.set(3.3, 1.5, -1.7);
+      this.scene.add(isaacFill);
+      this.controls.autoRotate = true;
+      this.controls.autoRotateSpeed = 0.55;
+      const stopAuto = () => { this.controls.autoRotate = false; };
+      this.controls.addEventListener('start', stopAuto, { once: true });
+      // orbit at a gentle interior height, INSIDE the captured room — the
+      // splat only looks right from within (wall splats read as mush from
+      // behind), so keep the whole orbit radius well short of the walls,
+      // and never below the captured floor (near-transparent from beneath).
+      this.controls.maxPolarAngle = Math.PI * 0.52;
+      this.camera.position.set(1.25, 1.6, 1.75);
+    } else {
+      // model is grounded at y=0 inside the group — lift so it hovers
+      this.spin = group;
+      this.float = { group, base: groundY };
+      group.position.y = groundY;
+    }
     if (animations?.length) {
       this.mixer = new THREE.AnimationMixer(group);
       for (const clip of animations) {
@@ -418,9 +551,9 @@ export class Stage {
     };
     grow();
     this.controls.enabled = true;
-    this.controls.target.set(0, 1.3, 0);
-    this.controls.minDistance = 1.6;
-    this.controls.maxDistance = 8;
+    this.controls.target.set(0, splat ? 0.85 : 1.3, 0);
+    this.controls.minDistance = splat ? 1.1 : 1.6;
+    this.controls.maxDistance = splat ? 2.6 : 8;
     return true;
   }
 
@@ -741,6 +874,7 @@ export function focusExit(stage, fx) {
   fx.caption.classList.remove('on');
   fx.concept?.classList.remove('on');
   fx.lightbox?.classList.remove('on');
+  fx.infobox?.classList.remove('on');
   fx.dismiss.classList.remove('on');
   fx.dim.style.transition = 'none';
   fx.dim.classList.remove('on');

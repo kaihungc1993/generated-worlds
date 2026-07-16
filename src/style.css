@@ -743,9 +743,26 @@ footer a {
   backdrop-filter: blur(12px);
 }
 
+.concept-thumbs {
+  display: flex;
+  gap: 8px;
+}
+
+/* several reference photos share the row at a smaller uniform box */
+.concept-thumbs.multi .concept-thumb {
+  width: 118px;
+  height: 118px;
+}
+
+/* fixed-size preview box: contain (never crop) + padding + subtle backdrop
+   so odd-aspect reference photos read as intentional, not cut off */
 .concept-thumb {
   display: block;
   width: 200px;
+  height: 150px;
+  object-fit: contain;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   border: 1px solid var(--border);
   cursor: zoom-in;
@@ -755,6 +772,16 @@ footer a {
 .concept-thumb:hover {
   transform: scale(1.03);
   border-color: var(--accent);
+}
+
+.concept-lightbox video {
+  max-width: 100%;
+  max-height: calc(100% - 40px);
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid rgba(124, 158, 255, 0.35);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  cursor: default;
 }
 
 .concept-lightbox {

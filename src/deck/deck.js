@@ -44,8 +44,14 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
     <div id="fx-fill"></div>
     <div id="fx-rays"></div>
     <div id="fx-panels">
-      <div id="fx-concept"><div class="k">CONCEPT REFERENCE</div><img alt="" title="click to enlarge" /></div>
-      <div id="fx-caption"><div class="k"></div><div class="t"></div><div class="d"></div></div>
+      <div id="fx-concept"><div class="k">CONCEPT REFERENCE</div><div class="imgs"></div></div>
+      <div id="fx-caption"><div class="k"></div><div class="t"></div><div class="d"></div><button class="info-btn" hidden>ⓘ About this scene</button></div>
+    </div>
+    <div id="fx-infobox">
+      <button class="close" aria-label="close">✕</button>
+      <div class="k">ABOUT THIS SCENE</div>
+      <div class="t"></div>
+      <div class="d"></div>
     </div>
     <div id="fx-lightbox"><img alt="" /><div class="cap">CONCEPT REFERENCE · CLICK TO CLOSE</div></div>
     <button id="fx-dismiss" aria-label="back">← Back</button>
@@ -332,12 +338,39 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
     busy = false;
   }
 
-  // concept reference panel: click-to-enlarge lightbox (any focused card with art)
-  fx.concept.querySelector('img').addEventListener('click', () => {
-    fx.lightbox.querySelector('img').src = fx.concept.querySelector('img').src;
+  // concept reference panel: click-to-enlarge lightbox (any focused card with
+  // art; thumbnails are re-rendered per card, so delegate from the panel).
+  // Video thumbnails (Isaac Sim demo trailers) expand to a playing video.
+  fx.concept.addEventListener('click', (e) => {
+    const media = e.target.closest('.imgs img, .imgs video');
+    if (!media) return;
+    const img = fx.lightbox.querySelector('img');
+    fx.lightbox.querySelector('video')?.remove();
+    if (media.tagName === 'VIDEO') {
+      img.style.display = 'none';
+      const vid = document.createElement('video');
+      Object.assign(vid, { src: media.src, autoplay: true, muted: true, loop: true, playsInline: true, controls: true });
+      fx.lightbox.insertBefore(vid, fx.lightbox.querySelector('.cap'));
+      fx.lightbox.querySelector('.cap').textContent = 'ISAAC SIM SIMULATION · CLICK OUTSIDE TO CLOSE';
+    } else {
+      img.style.display = '';
+      img.src = media.src;
+      fx.lightbox.querySelector('.cap').textContent = 'CONCEPT REFERENCE · CLICK TO CLOSE';
+    }
     fx.lightbox.classList.add('on');
   });
-  fx.lightbox.addEventListener('click', () => fx.lightbox.classList.remove('on'));
+  fx.lightbox.addEventListener('click', (e) => {
+    // let clicks on the video reach its native controls; backdrop closes
+    if (e.target.tagName === 'VIDEO') return;
+    fx.lightbox.classList.remove('on');
+    fx.lightbox.querySelector('video')?.remove();
+    fx.lightbox.querySelector('img').style.display = '';
+  });
+
+  // "about this scene" popup: shown for cards whose manifest entry carries an
+  // `info` field (content is filled per card by showCaption in deck-engine)
+  fx.infoBtn.addEventListener('click', () => fx.infobox.classList.toggle('on'));
+  fx.infobox.querySelector('.close').addEventListener('click', () => fx.infobox.classList.remove('on'));
 
   fx.dismiss.addEventListener('click', () => {
     if (!inFocus) return;
@@ -594,7 +627,7 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
 
   // ----------------------------------------------------------- intro legend beat
 
-  const INTRO_IDS = ['le-creuset-stackable-ramekins', 'shopping-mall-interior', 'dune-desert-village-v1', 'ghost-game'];
+  const INTRO_IDS = ['samsung-rf28r-refrigerator', 'shopping-mall-interior', 'dune-desert-village-v1', 'ghost-game'];
   const LEGEND = {
     assets: ['Articulated Assets', 'An articulated object from Blender procedural-generation agents — an actor plus critics, 1–3 h runs, 0–3 rounds of human feedback'],
     sim: ['Greybox Scenes', 'The same agent pipeline pushed to a whole greybox scene — 3–6 h runs, zero human feedback'],
@@ -605,7 +638,11 @@ export function createDeck(container, { blender, evals, concepts = {} }) {
   async function introBeat() {
     mode = 'intro';
     deckArea.classList.add('intromode'); // legend cards are display-only
-    const introEntries = INTRO_IDS.map((id) => entries.find((en) => en.card.id === id));
+    // one representative per category; ids missing from the active asset set
+    // (e.g. the fridge in ?assets=opus) fall back to that category's first card
+    const introCats = ['assets', 'sim', 'worlds', 'game'];
+    const introEntries = INTRO_IDS.map((id, k) => entries.find((en) => en.card.id === id)
+      || entries.find((en) => en.card.cat === introCats[k]));
     const rest = entries.filter((en) => !introEntries.includes(en));
     const pile = pilePos();
     const W = innerWidth;

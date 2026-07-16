@@ -274,6 +274,24 @@ body.deck-mode {
     color: #0b0d14; background: var(--accent);
     padding: 3px 9px; border-radius: 100px; font-weight: 700;
   }
+  /* inverted variant (per-card deckBadge, e.g. the workbench MULTI-ASSET):
+     same pill, but white solid fill with the accent as border + text */
+  .card .badge.badge-outline {
+    color: var(--accent); background: #fff;
+    border: 1.5px solid var(--accent);
+    padding: 1.5px 7.5px;
+  }
+  .card .model-badge {
+    position: absolute; right: 7px; bottom: 7px; z-index: 2;
+    font-family: var(--mono); letter-spacing: 0.1em;
+    font-size: clamp(8px, calc(var(--cw) * 0.052), 10px);
+    color: #f4f6fc;
+    background: rgba(8, 10, 16, 0.82);
+    border: 1px solid color-mix(in srgb, var(--accent) 65%, transparent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    padding: 3px 7px; border-radius: 100px; font-weight: 700;
+    backdrop-filter: blur(5px);
+  }
   /* dealt rows keep only badge + art + title; art gets most of the card */
   .card .desc, .card .stats { display: none; }
   .card .name {
@@ -400,10 +418,56 @@ body.deck-mode {
     opacity: 0; pointer-events: none; transform: translateY(12px);
     transition: opacity 0.4s, transform 0.4s;
   }
-  #fx-caption.on { opacity: 1; transform: none; }
+  #fx-caption.on { opacity: 1; transform: none; pointer-events: auto; }
   #fx-caption .k { font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; }
   #fx-caption .t { font-size: clamp(18px, 1.6vw, 21px); font-weight: 700; margin: 5px 0 3px; }
   #fx-caption .d { font-size: 14px; color: var(--dim); line-height: 1.55; }
+
+  /* "about this scene" opener — small pill inside the caption panel, only
+     rendered for cards whose manifest entry carries an `info` field */
+  #fx-caption .info-btn {
+    margin-top: 10px; padding: 6px 12px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+    color: var(--text); background: rgba(124, 158, 255, 0.1);
+    border: 1px solid rgba(124, 158, 255, 0.35); border-radius: 100px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  #fx-caption .info-btn:hover { border-color: var(--accent); background: rgba(124, 158, 255, 0.18); }
+
+  /* dismissible "about this scene" popup — same glass language as the HUD
+     panels, centered above the focus view, below the concept lightbox */
+  #fx-infobox {
+    position: fixed; left: 50%; top: 50%; z-index: 42;
+    transform: translate(-50%, -50%) scale(0.96);
+    width: min(880px, calc(100vw - 44px));
+    max-height: min(70vh, 560px); overflow-y: auto;
+    background: rgba(10, 12, 18, 0.92); border: 1px solid rgba(124, 158, 255, 0.4);
+    border-radius: 16px; padding: 22px 26px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s;
+  }
+  #fx-infobox.on { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%); }
+  #fx-infobox .k {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  #fx-infobox .t { font-size: clamp(19px, 1.8vw, 23px); font-weight: 700; margin: 6px 0 10px; }
+  #fx-infobox .d { font-size: 15px; color: var(--text); opacity: 0.88; line-height: 1.75; }
+  #fx-infobox .d ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+  #fx-infobox .d li::marker { color: var(--accent); }
+  #fx-infobox .close {
+    position: absolute; right: 12px; top: 12px;
+    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: var(--dim);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(135, 145, 180, 0.24); border-radius: 10px;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  #fx-infobox .close:hover { color: var(--text); border-color: var(--accent); }
 
   /* concept-art reference panel (any focused card with art) */
   #fx-concept {
@@ -419,17 +483,28 @@ body.deck-mode {
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
     text-transform: uppercase; color: var(--dim); margin-bottom: 8px;
   }
-  #fx-concept img {
-    display: block; width: 100%; max-height: 30vh; object-fit: contain;
+  #fx-concept .imgs { display: flex; gap: 8px; }
+  /* fixed-size preview box: contain (never crop) + padding + subtle backdrop
+     so odd-aspect reference photos read as intentional, not cut off.
+     video thumbnails (Isaac Sim demo trailers) share the same framed box. */
+  #fx-concept img,
+  #fx-concept video {
+    display: block; width: 100%; height: min(200px, 26vh); object-fit: contain;
+    padding: 6px; background: rgba(255, 255, 255, 0.05);
     border-radius: 8px; border: 1px solid rgba(124, 158, 255, 0.3);
     cursor: zoom-in;
     transition: transform 0.18s ease, border-color 0.18s ease;
   }
-  #fx-concept img:hover { transform: scale(1.02); border-color: var(--accent); }
+  /* several reference photos share the row at a smaller, uniform box */
+  #fx-concept .imgs.multi img,
+  #fx-concept .imgs.multi video { flex: 1 1 0; min-width: 0; height: 112px; }
+  #fx-concept img:hover,
+  #fx-concept video:hover { transform: scale(1.02); border-color: var(--accent); }
   /* narrow or short viewports: keep the reference small so the scene stays visible */
   @media (max-width: 700px), (max-height: 700px) {
     #fx-concept { width: min(300px, calc(100vw - 44px)); padding: 10px 12px; }
-    #fx-concept img { max-height: 22vh; }
+    #fx-concept img, #fx-concept video { height: min(160px, 22vh); }
+    #fx-concept .imgs.multi img, #fx-concept .imgs.multi video { height: 84px; }
   }
 
   /* fullscreen concept lightbox — above caption/rail/dismiss, below fx-toast */
@@ -443,11 +518,13 @@ body.deck-mode {
     transition: opacity 0.2s ease;
   }
   #fx-lightbox.on { opacity: 1; pointer-events: auto; }
-  #fx-lightbox img {
+  #fx-lightbox img,
+  #fx-lightbox video {
     max-width: 100%; max-height: calc(100% - 40px); object-fit: contain;
     border-radius: 10px; border: 1px solid rgba(124, 158, 255, 0.35);
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
   }
+  #fx-lightbox video { cursor: default; }
   #fx-lightbox .cap { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; color: var(--dim); }
 
   /* wide rounded back button, top-left — reads as "go back to the last page" */
